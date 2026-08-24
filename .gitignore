@@ -1,5 +1,5 @@
-quaero
-quaero.exe
+/quaero
+/quaero.exe
 /dist/
 *.local.yaml
 .env
