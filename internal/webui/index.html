@@ -1,0 +1,658 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Quaero</title>
+<style>
+  :root {
+    --bg: #0b0f16;
+    --bg-2: #0f1520;
+    --panel: #151c28;
+    --panel-2: #1b2331;
+    --line: #232c3b;
+    --line-2: #2e3a4d;
+    --text: #e8eef7;
+    --muted: #8b98ab;
+    --dim: #5d6b80;
+    --accent: #6aa9ff;
+    --accent-2: #8b7bff;
+    --ok: #4ec97a;
+    --calm: #e0b13c;
+    --warn: #ec8a4c;
+    --bad: #ff6b60;
+    --dead: #6e7d91;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background:
+      radial-gradient(1100px 500px at 15% -8%, rgba(106,169,255,.09), transparent 60%),
+      radial-gradient(900px 420px at 88% -12%, rgba(139,123,255,.08), transparent 60%),
+      var(--bg);
+    color: var(--text);
+    font: 15px/1.6 -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1100px; margin: 0 auto; padding: 44px 22px 90px; }
+
+  .brand { display: flex; align-items: baseline; gap: 12px; margin-bottom: 6px; }
+  h1 {
+    font-size: 34px; margin: 0; letter-spacing: -0.8px; font-weight: 700;
+    background: linear-gradient(100deg, var(--accent), var(--accent-2));
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .ver { color: var(--dim); font-size: 12px; font-family: ui-monospace, Consolas, monospace; }
+  .tagline { color: var(--muted); margin: 0 0 26px; font-size: 15.5px; }
+
+  .searchbar { display: flex; gap: 10px; }
+  .field { flex: 1; }
+  input[type=text] {
+    width: 100%; padding: 15px 16px; font-size: 16px;
+    background: var(--panel); color: var(--text);
+    border: 1px solid var(--line); border-radius: 11px; outline: none;
+    transition: border-color .15s, box-shadow .15s;
+  }
+  input[type=text]::placeholder { color: var(--dim); }
+  input[type=text]:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(106,169,255,.14);
+  }
+  .btn-go {
+    padding: 15px 26px; font-size: 15px; font-weight: 650; cursor: pointer;
+    background: linear-gradient(100deg, var(--accent), var(--accent-2));
+    color: #06101f; border: 0; border-radius: 11px;
+    transition: filter .15s, transform .05s;
+  }
+  .btn-go:hover:not(:disabled) { filter: brightness(1.08); }
+  .btn-go:active:not(:disabled) { transform: translateY(1px); }
+  .btn-go:disabled { opacity: .5; cursor: default; }
+
+  .suggest { margin-top: 14px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .chip {
+    background: var(--panel); color: var(--muted); border: 1px solid var(--line);
+    padding: 7px 13px; font-size: 13px; border-radius: 999px; cursor: pointer;
+    font-family: inherit; transition: all .15s;
+  }
+  .chip:hover { color: var(--text); border-color: var(--accent); background: var(--panel-2); }
+  .chip.refresh { color: var(--dim); }
+
+  .readback {
+    margin-top: 22px; padding: 13px 15px; border-radius: 11px;
+    background: linear-gradient(var(--panel), var(--bg-2));
+    border: 1px solid var(--line); font-size: 13.5px;
+  }
+  .readback .lab { color: var(--dim); margin-right: 8px; font-size: 12px; text-transform: uppercase; letter-spacing: .6px; }
+  .facet {
+    display: inline-block; margin: 4px 6px 4px 0; padding: 4px 10px;
+    background: var(--panel-2); border: 1px solid var(--line-2);
+    border-radius: 999px; font-size: 12.5px; color: var(--text);
+  }
+  .facet.term { border-color: rgba(106,169,255,.4); color: var(--accent); }
+  .query {
+    margin-top: 10px; padding-top: 9px; border-top: 1px solid var(--line);
+    color: var(--dim); font-family: ui-monospace, Consolas, monospace;
+    font-size: 12px; word-break: break-all;
+  }
+
+  .toolbar {
+    display: flex; align-items: center; gap: 12px; margin: 26px 0 14px;
+    flex-wrap: wrap; padding-bottom: 12px; border-bottom: 1px solid var(--line);
+  }
+
+  /* Panneau de filtres: chaque critere sur sa ligne, avec un intitule a
+     gauche et une explication sous les boutons. Empiler des boutons sans
+     rien dire de ce qu'ils font oblige a tous les essayer pour comprendre. */
+  .panel {
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 12px; padding: 4px 16px; margin-bottom: 20px;
+  }
+  .row {
+    display: grid; grid-template-columns: 118px 1fr; gap: 14px;
+    align-items: start; padding: 13px 0; border-top: 1px solid var(--line);
+  }
+  .row:first-child { border-top: 0; }
+  .row-label { padding-top: 5px; }
+  .row-label .name {
+    display: block; color: var(--text); font-size: 13px; font-weight: 620;
+  }
+  .row-label .sub { display: block; color: var(--dim); font-size: 11.5px; margin-top: 1px; }
+  .row-buttons { display: flex; gap: 7px; flex-wrap: wrap; }
+  .row-hint {
+    grid-column: 2; color: var(--muted); font-size: 12.5px;
+    margin-top: 8px; min-height: 17px; line-height: 1.45;
+  }
+  .count { color: var(--muted); font-size: 13.5px; }
+  .count b { color: var(--text); font-weight: 650; }
+  .group { display: flex; gap: 6px; flex-wrap: wrap; }
+  .group.right { margin-left: auto; }
+  .seg {
+    background: var(--panel); color: var(--muted); border: 1px solid var(--line);
+    padding: 6px 12px; font-size: 13px; border-radius: 8px; cursor: pointer;
+    font-family: inherit; transition: all .15s;
+  }
+  .seg:hover { color: var(--text); }
+  .seg.on {
+    color: #06101f; border-color: transparent; font-weight: 620;
+    background: linear-gradient(100deg, var(--accent), var(--accent-2));
+  }
+  .seg .n { opacity: .7; font-size: 12px; margin-left: 4px; }
+  .lab-group {
+    color: var(--dim); font-size: 11.5px; text-transform: uppercase;
+    letter-spacing: .7px; min-width: 62px;
+  }
+  .quota {
+    margin-left: auto; color: var(--dim); font-size: 12.5px;
+    padding: 4px 10px; border: 1px solid var(--line); border-radius: 999px;
+    font-family: ui-monospace, Consolas, monospace; cursor: help;
+  }
+  .quota.low { color: var(--calm); border-color: rgba(224,177,60,.4); background: rgba(224,177,60,.07); }
+
+  .repo { padding: 18px 0; border-bottom: 1px solid var(--line); animation: rise .25s ease both; }
+  @keyframes rise { from { opacity: 0; transform: translateY(5px); } }
+  .repo .top { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .rankno { color: var(--dim); font-size: 12.5px; font-family: ui-monospace, Consolas, monospace; }
+  .repo a.name {
+    color: var(--accent); font-size: 17.5px; font-weight: 650;
+    text-decoration: none; letter-spacing: -0.2px;
+  }
+  .repo a.name:hover { text-decoration: underline; }
+  .desc { color: var(--text); opacity: .82; margin: 7px 0 9px; }
+  .meta { color: var(--muted); font-size: 13px; display: flex; gap: 15px; flex-wrap: wrap; align-items: center; }
+  .clickable { cursor: pointer; border-bottom: 1px dashed var(--line-2); }
+  .clickable:hover { color: var(--accent); border-color: var(--accent); }
+
+  .topics { margin-top: 9px; }
+  .topic {
+    display: inline-block; margin: 0 6px 6px 0; padding: 3px 10px;
+    background: rgba(106,169,255,.1); color: var(--accent);
+    border: 1px solid rgba(106,169,255,.2);
+    border-radius: 999px; font-size: 12px; cursor: pointer; transition: all .15s;
+  }
+  .topic:hover { background: rgba(106,169,255,.22); }
+
+  .health { font-weight: 650; font-size: 12px; padding: 3px 10px; border-radius: 999px; }
+  .h-sain      { color: var(--ok);   background: rgba(78,201,122,.13); }
+  .h-calme     { color: var(--calm); background: rgba(224,177,60,.13); }
+  .h-dormant   { color: var(--warn); background: rgba(236,138,76,.15); }
+  .h-abandonne { color: var(--bad);  background: rgba(255,107,96,.14); }
+  .h-archive   { color: var(--dead); background: rgba(110,125,145,.16); }
+
+  .script {
+    font-size: 11.5px; padding: 3px 9px; border-radius: 999px;
+    color: var(--accent-2); background: rgba(139,123,255,.12);
+    border: 1px solid rgba(139,123,255,.22); cursor: help;
+  }
+  .notes { margin-top: 9px; font-size: 12.5px; color: var(--muted); }
+  .notes div { margin-top: 3px; padding-left: 13px; position: relative; }
+  .notes div::before { content: "\00b7"; position: absolute; left: 3px; color: var(--dim); }
+  .why { margin-top: 7px; font-size: 12px; color: var(--dim); font-style: italic; }
+
+  .pager { display: flex; gap: 8px; justify-content: center; align-items: center; margin-top: 30px; flex-wrap: wrap; }
+  .pager .seg { min-width: 38px; text-align: center; }
+  .dots { color: var(--dim); }
+
+  .msg { padding: 14px 16px; border-radius: 11px; background: var(--panel); border: 1px solid var(--line); margin-top: 18px; font-size: 13.5px; }
+  .msg.error { border-color: rgba(255,107,96,.4); color: #ffb0a9; background: rgba(255,107,96,.06); }
+  .msg.note  { border-color: rgba(224,177,60,.35); color: #f0cf87; background: rgba(224,177,60,.05); }
+  .empty { color: var(--muted); text-align: center; padding: 56px 0; }
+  .spinner {
+    width: 22px; height: 22px; margin: 0 auto 14px; border-radius: 50%;
+    border: 2px solid var(--line-2); border-top-color: var(--accent);
+    animation: spin .7s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  footer { margin-top: 50px; color: var(--dim); font-size: 12.5px; text-align: center; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="brand">
+    <h1>Quaero</h1>
+    <span class="ver" id="version"></span>
+  </div>
+  <p class="tagline">Décrivez ce que vous cherchez. Pas la syntaxe qui le trouverait.</p>
+
+  <div class="searchbar">
+    <div class="field">
+      <input type="text" id="q" autofocus autocomplete="off" spellcheck="false"
+             placeholder="une bibliothèque go pour parser du yaml, encore maintenue">
+    </div>
+    <button class="btn-go" id="go">Chercher</button>
+  </div>
+
+  <div class="suggest" id="suggest"></div>
+  <div id="readback"></div>
+  <div id="out"></div>
+
+  <footer>
+    Forks et dépôts archivés écartés par défaut. Dites « y compris les forks » pour les garder.<br>
+    <span style="opacity:.75">Quaero - Terry Passave &copy; 2026. Tous droits réservés.</span>
+  </footer>
+</div>
+
+<script>
+"use strict";
+
+// Jeu large, pioche au hasard a chaque chargement et sur demande: montrer
+// toujours les memes exemples n'apprend rien apres la premiere fois.
+var ALL_EXAMPLES = [
+  "une bibliothèque rust pour parser du json, très populaire",
+  "un outil go de scan réseau encore maintenu",
+  "client python pour elasticsearch, au moins 500 étoiles",
+  "framework typescript de tests end to end, récent",
+  "outil de chiffrement en ligne de commande",
+  "une lib go pour générer des pdf",
+  "serveur mqtt léger en rust",
+  "bibliothèque python de séries temporelles, maintenue",
+  "moteur de recherche plein texte embarqué",
+  "un outil de migration de base de données en go",
+  "parser de logs en rust, performant",
+  "client kubernetes en typescript",
+  "un générateur de site statique récent",
+  "bibliothèque de graphes en python, populaire",
+  "un proxy inverse en go, au moins 1000 étoiles",
+  "lib de compression rapide en c",
+  "framework web minimaliste en rust",
+  "outil de capture réseau en ligne de commande",
+  "un client ldap en go",
+  "bibliothèque de crypto post-quantique",
+  "un outil de fuzzing récent",
+  "client s3 alternatif en go, maintenu",
+  "bibliothèque de parsing yaml en rust",
+  "outil de gestion de secrets en ligne de commande",
+  "lib de validation de schéma json en python",
+  "un émulateur de terminal en rust"
+];
+
+// Les libelles disent ce que le bouton fait, pas comment il s'appelle en
+// interne. "pertinence" ne veut rien dire a qui decouvre l'outil; "au plus
+// proche de ma demande" si.
+var HEALTH_LABEL = {
+  sain:      "actif",
+  calme:     "stable",
+  dormant:   "ralenti",
+  abandonne: "arrêté",
+  archive:   "archivé"
+};
+
+var HEALTH_HINT = {
+  tous:      "Afficher tous les dépôts trouvés, quel que soit leur niveau d'activité",
+  sain:      "Du code a été poussé il y a moins de 3 mois : le projet vit aujourd'hui",
+  calme:     "Dernier changement il y a moins d'un an : normal pour une bibliothèque terminée qui n'a plus besoin d'évoluer",
+  dormant:   "Entre 1 et 2 ans sans le moindre changement : personne ne s'en occupe activement",
+  abandonne: "Plus de 2 ans sans changement : à considérer comme arrêté, aucun correctif ne viendra",
+  archive:   "L'auteur l'a officiellement fermé : il est en lecture seule et ne bougera plus jamais"
+};
+
+var SORTS = [
+  ["pertinence", "au plus proche",
+   "Les dépôts dont le nom et la description collent le mieux à vos mots. C'est le choix par défaut."],
+  ["populaire",  "les plus adoptés",
+   "Les projets avec le plus d'étoiles d'abord. À choisir quand se tromper coûte cher et qu'une large communauté rassure."],
+  ["niche",      "les plus ciblés",
+   "Les petits projets précis, entre 20 et 2000 étoiles, que le classement par popularité enterre habituellement."],
+  ["recent",     "modifiés récemment",
+   "Du plus récemment modifié au plus ancien, sans tenir compte de la pertinence ni des étoiles."],
+  ["sante",      "les plus fiables",
+   "Les projets les plus activement entretenus d'abord, pour choisir une dépendance sur laquelle s'appuyer durablement."]
+];
+
+var SCRIPT_LABEL = {
+  latin: "latin", chinois: "chinois", japonais: "japonais", coreen: "coréen",
+  cyrillique: "cyrillique", arabe: "arabe", hebreu: "hébreu", grec: "grec",
+  devanagari: "devanagari", thai: "thaï", indetermine: "sans description"
+};
+
+var SCRIPT_HINT = {
+  tous:        "Toutes les écritures confondues",
+  latin:       "Description en alphabet latin : anglais, français, espagnol, allemand, portugais…",
+  chinois:     "Description en caractères chinois",
+  japonais:    "Description en japonais (kana et kanji)",
+  coreen:      "Description en coréen (hangul)",
+  cyrillique:  "Description en cyrillique : russe, ukrainien, bulgare, serbe…",
+  arabe:       "Description en écriture arabe",
+  hebreu:      "Description en hébreu",
+  grec:        "Description en grec",
+  devanagari:  "Description en devanagari : hindi, marathi, népalais…",
+  thai:        "Description en thaï",
+  indetermine: "Aucune description, l'écriture ne peut pas être déterminée"
+};
+
+var PRECISIONS = [
+  ["approfondie", "approfondie",
+   "Pose la même question de cinq façons : nom du dépôt, description, sujet, expression exacte et recherche générale. Un projet trouvé par plusieurs d'entre elles remonte en tête, parce que cet accord est le signal de pertinence le plus fiable. Coûte 5 requêtes de quota."],
+  ["rapide", "rapide",
+   "Une seule requête générale. Moins précis, mais instantané et économe en quota."]
+];
+
+var SCOPES = [
+  ["anglais", "anglais",
+   "Une seule requête, avec vos termes traduits en anglais. Rapide et économe en quota."],
+  ["elargi",  "toutes langues",
+   "Relance la même recherche avec le terme principal écrit en chinois, japonais, russe, espagnol et portugais, puis fusionne les résultats. Une grande partie de GitHub est décrite dans ces langues et resterait invisible autrement. Coûte 5 requêtes de quota au lieu d'une."]
+];
+
+var state = {
+  sort: "pertinence", page: 1, filter: "tous", script: "tous",
+  scope: "anglais", precision: "approfondie", data: null
+};
+
+function $(id) { return document.getElementById(id); }
+
+function esc(s) {
+  return String(s == null ? "" : s)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+
+function pick(arr, n) {
+  var copy = arr.slice(), i, j, tmp;
+  for (i = copy.length - 1; i > 0; i--) {
+    j = Math.floor(Math.random() * (i + 1));
+    tmp = copy[i]; copy[i] = copy[j]; copy[j] = tmp;
+  }
+  return copy.slice(0, n);
+}
+
+function renderSuggestions() {
+  var box = $("suggest");
+  box.innerHTML = "";
+  pick(ALL_EXAMPLES, 4).forEach(function (text) {
+    var b = document.createElement("button");
+    b.className = "chip";
+    b.textContent = text;
+    b.onclick = function () { $("q").value = text; run({ page: 1 }); };
+    box.appendChild(b);
+  });
+  var r = document.createElement("button");
+  r.className = "chip refresh";
+  r.textContent = "\u21bb autres idées";
+  r.onclick = renderSuggestions;
+  box.appendChild(r);
+}
+
+function init() {
+  renderSuggestions();
+  $("go").onclick = function () { run({ page: 1 }); };
+  $("q").addEventListener("keydown", function (e) {
+    if (e.key === "Enter") run({ page: 1 });
+  });
+  fetch("/api/version").then(function (r) { return r.json(); })
+    .then(function (d) { $("version").textContent = d.version || ""; })
+    .catch(function () {});
+}
+
+// Cliquer une facette l'ajoute a la phrase et relance: c'est le raffinement
+// qu'on veut faire neuf fois sur dix apres avoir vu une premiere page.
+function refineWith(word) {
+  var current = $("q").value.trim();
+  if (current.toLowerCase().indexOf(word.toLowerCase()) >= 0) return;
+  $("q").value = current + " " + word;
+  run({ page: 1 });
+}
+
+function run(opts) {
+  opts = opts || {};
+  var phrase = $("q").value.trim();
+  if (!phrase) return;
+
+  if (opts.page) state.page = opts.page;
+  if (opts.sort) { state.sort = opts.sort; state.page = 1; }
+  if (opts.scope) { state.scope = opts.scope; state.page = 1; }
+  if (opts.precision) { state.precision = opts.precision; state.page = 1; }
+
+  $("go").disabled = true;
+  $("out").innerHTML = '<div class="empty"><div class="spinner"></div>Recherche\u2026</div>';
+
+  var url = "/api/search?q=" + encodeURIComponent(phrase)
+          + "&sort=" + encodeURIComponent(state.sort)
+          + "&scope=" + encodeURIComponent(state.scope)
+          + "&precision=" + encodeURIComponent(state.precision)
+          + "&page=" + state.page;
+
+  fetch(url)
+    .then(function (r) { return r.json(); })
+    .then(function (data) {
+      if (data.error) {
+        $("out").innerHTML = '<div class="msg error">' + esc(data.error) + "</div>";
+        if (data.query) {
+          $("readback").innerHTML = '<div class="readback"><div class="query">'
+            + esc(data.query) + "</div></div>";
+        }
+        return;
+      }
+      state.data = data;
+      state.filter = "tous";
+      state.script = "tous";
+      renderReadback(data);
+      render();
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    })
+    .catch(function (err) {
+      $("out").innerHTML = '<div class="msg error">Erreur réseau : ' + esc(String(err)) + "</div>";
+    })
+    .then(function () { $("go").disabled = false; });
+}
+
+function renderReadback(data) {
+  var it = data.intent || {};
+  var h = '<div class="readback"><span class="lab">Compris</span>';
+  (it.terms || []).forEach(function (t) { h += '<span class="facet term">' + esc(t) + "</span>"; });
+  (it.explain || []).forEach(function (e) { h += '<span class="facet">' + esc(e) + "</span>"; });
+  if (it.exclude_forks) h += '<span class="facet">sans forks</span>';
+  if (it.exclude_archived) h += '<span class="facet">sans archivés</span>';
+  h += '<div class="query">' + esc(data.query || "") + "</div></div>";
+  $("readback").innerHTML = h;
+}
+
+function render() {
+  var data = state.data;
+  if (!data) return;
+  var repos = data.repos || [];
+
+  if (!repos.length) {
+    $("out").innerHTML = '<div class="empty">Aucun dépôt sur cette page. Essayez des termes plus larges.</div>';
+    return;
+  }
+
+  var counts = { tous: repos.length, sain: 0, calme: 0, dormant: 0, abandonne: 0, archive: 0 };
+  repos.forEach(function (r) {
+    var l = (r.health || {}).level;
+    if (counts[l] !== undefined) counts[l]++;
+  });
+
+  var h = '<div class="toolbar"><span class="count"><b>' + repos.length
+        + "</b> sur cette page, <b>" + (data.reachable || 0).toLocaleString("fr-FR")
+        + "</b> accessibles sur " + (data.total || 0).toLocaleString("fr-FR")
+        + " trouvés \u00b7 " + esc(data.elapsed || "") + "</span>";
+
+  var quota = data.quota || {};
+  if (quota.limit > 0) {
+    var low = quota.remaining < 200;
+    h += '<span class="quota' + (low ? " low" : "") + '" title="Quota de l\'API GitHub'
+       + (quota.reset_at ? ", réinitialisé à " + esc(quota.reset_at) : "") + '">'
+       + quota.remaining + " / " + quota.limit + " requêtes</span>";
+  }
+
+  h += "</div>";
+
+  // Panneau de filtres. Chaque ligne porte son intitule, ses boutons et une
+  // phrase qui explique le choix actif: des boutons muets obligent a tous les
+  // essayer pour comprendre ce qu'ils font.
+  h += '<div class="panel">';
+
+  h += row("Classer par", "ordre d'affichage",
+    SORTS.map(function (s) {
+      return btn("data-sort", s[0], s[1], state.sort === s[0], s[2], null);
+    }).join(""),
+    hintFor(SORTS, state.sort));
+
+  var healthButtons = [];
+  var healthKeys = ["tous", "sain", "calme", "dormant", "abandonne", "archive"];
+  healthKeys.forEach(function (level) {
+    if (level !== "tous" && counts[level] === 0) return;
+    var label = level === "tous" ? "tous" : HEALTH_LABEL[level];
+    healthButtons.push(btn("data-filter", level, label,
+      state.filter === level, HEALTH_HINT[level], counts[level]));
+  });
+  h += row("Activité", "vitalité du projet", healthButtons.join(""),
+    HEALTH_HINT[state.filter] || "");
+
+  h += row("Langues", "portée de la recherche",
+    SCOPES.map(function (sc) {
+      return btn("data-scope", sc[0], sc[1], state.scope === sc[0], sc[2], null);
+    }).join(""),
+    hintFor(SCOPES, state.scope));
+
+  h += row("Précision", "nombre de formulations",
+    PRECISIONS.map(function (p) {
+      return btn("data-precision", p[0], p[1], state.precision === p[0], p[2], null);
+    }).join(""),
+    hintFor(PRECISIONS, state.precision));
+
+  var scripts = {};
+  repos.forEach(function (r) {
+    var sc = r.script || "indetermine";
+    scripts[sc] = (scripts[sc] || 0) + 1;
+  });
+  var scriptKeys = Object.keys(scripts);
+  if (scriptKeys.length > 1) {
+    var scriptButtons = [btn("data-script", "tous", "toutes",
+      state.script === "tous", SCRIPT_HINT.tous, repos.length)];
+    scriptKeys.sort(function (a, b) { return scripts[b] - scripts[a]; }).forEach(function (sc) {
+      scriptButtons.push(btn("data-script", sc, SCRIPT_LABEL[sc] || sc,
+        state.script === sc, SCRIPT_HINT[sc], scripts[sc]));
+    });
+    h += row("Écriture", "langue de la description", scriptButtons.join(""),
+      SCRIPT_HINT[state.script] || SCRIPT_HINT.tous);
+  }
+
+  h += "</div>";
+
+  if (data.note) h += '<div class="msg note">' + esc(data.note) + "</div>";
+
+  var offset = ((data.page || 1) - 1) * 50;
+  repos.filter(function (r) {
+    var okHealth = state.filter === "tous" || (r.health || {}).level === state.filter;
+    var okScript = state.script === "tous" || (r.script || "indetermine") === state.script;
+    return okHealth && okScript;
+  }).forEach(function (r, i) { h += card(r, offset + i + 1); });
+
+  h += pager(data);
+  $("out").innerHTML = h;
+
+  bind("[data-sort]", function (b) { run({ sort: b.getAttribute("data-sort") }); });
+  bind("[data-filter]", function (b) { state.filter = b.getAttribute("data-filter"); render(); });
+  bind("[data-page]", function (b) { run({ page: parseInt(b.getAttribute("data-page"), 10) }); });
+  bind("[data-scope]", function (b) { run({ scope: b.getAttribute("data-scope") }); });
+  bind("[data-precision]", function (b) { run({ precision: b.getAttribute("data-precision") }); });
+  bind("[data-script]", function (b) { state.script = b.getAttribute("data-script"); render(); });
+  bind("[data-refine]", function (b) { refineWith(b.getAttribute("data-refine")); });
+}
+
+// row rend une ligne du panneau: intitule, boutons, et l'explication du choix
+// actif sous les boutons plutot que cachee dans une infobulle.
+function row(name, sub, buttons, hint) {
+  return '<div class="row"><div class="row-label"><span class="name">' + esc(name)
+       + '</span><span class="sub">' + esc(sub) + '</span></div>'
+       + '<div class="row-buttons">' + buttons + "</div>"
+       + '<div class="row-hint">' + esc(hint || "") + "</div></div>";
+}
+
+function btn(attr, value, label, active, title, count) {
+  var h = '<button class="seg ' + (active ? "on" : "") + '" ' + attr + '="' + esc(value) + '"';
+  if (title) h += ' title="' + esc(title) + '"';
+  h += ">" + esc(label);
+  if (count !== null && count !== undefined) h += '<span class="n">' + count + "</span>";
+  return h + "</button>";
+}
+
+function hintFor(table, value) {
+  for (var i = 0; i < table.length; i++) {
+    if (table[i][0] === value) return table[i][2];
+  }
+  return "";
+}
+
+function bind(selector, fn) {
+  var nodes = document.querySelectorAll(selector), i;
+  for (i = 0; i < nodes.length; i++) {
+    (function (node) { node.onclick = function () { fn(node); }; })(nodes[i]);
+  }
+}
+
+function pager(data) {
+  var pages = data.pages || 1;
+  var cur = data.page || 1;
+  if (pages <= 1) return "";
+
+  var h = '<div class="pager">', p;
+  if (cur > 1) h += '<button class="seg" data-page="' + (cur - 1) + '">\u2039 précédent</button>';
+
+  var from = Math.max(1, cur - 3);
+  var to = Math.min(pages, cur + 3);
+  if (from > 1) h += '<button class="seg" data-page="1">1</button><span class="dots">\u2026</span>';
+  for (p = from; p <= to; p++) {
+    h += '<button class="seg ' + (p === cur ? "on" : "") + '" data-page="' + p + '">' + p + "</button>";
+  }
+  if (to < pages) h += '<span class="dots">\u2026</span><button class="seg" data-page="' + pages + '">' + pages + "</button>";
+  if (cur < pages) h += '<button class="seg" data-page="' + (cur + 1) + '">suivant \u203a</button>';
+
+  return h + "</div>";
+}
+
+function card(r, position) {
+  var health = r.health || {};
+  var level = health.level || "";
+  var h = '<div class="repo"><div class="top">';
+  h += '<span class="rankno">#' + position + "</span>";
+  h += '<a class="name" href="' + esc(r.url) + '" target="_blank" rel="noopener">'
+     + esc(r.full_name) + "</a>";
+  if (level) {
+    h += '<span class="health h-' + esc(level) + '" title="' + esc(HEALTH_HINT[level] || "") + '">'
+       + esc(HEALTH_LABEL[level] || level) + "</span>";
+  }
+  if (r.script && r.script !== "latin" && r.script !== "indetermine") {
+    h += '<span class="script" title="' + esc(SCRIPT_HINT[r.script] || "") + '">'
+       + esc(SCRIPT_LABEL[r.script] || r.script) + "</span>";
+  }
+  h += "</div>";
+
+  if (r.description) h += '<div class="desc">' + esc(r.description) + "</div>";
+
+  h += '<div class="meta"><span>\u2605 ' + (r.stars || 0).toLocaleString("fr-FR") + "</span>";
+  if (r.language) {
+    h += '<span class="clickable" data-refine="' + esc(r.language) + '">' + esc(r.language) + "</span>";
+  }
+  h += "<span>" + (r.open_issues || 0) + " issue(s)</span>";
+  if (r.license) h += "<span>" + esc(r.license) + "</span>";
+  if (health.days_since_push >= 0) {
+    h += "<span>" + health.days_since_push + " j depuis le dernier envoi</span>";
+  }
+  h += "</div>";
+
+  if (r.topics && r.topics.length) {
+    h += '<div class="topics">';
+    r.topics.slice(0, 8).forEach(function (t) {
+      h += '<span class="topic" data-refine="' + esc(t) + '">' + esc(t) + "</span>";
+    });
+    h += "</div>";
+  }
+
+  if (health.notes && health.notes.length) {
+    h += '<div class="notes">';
+    health.notes.forEach(function (n) { h += "<div>" + esc(n) + "</div>"; });
+    h += "</div>";
+  }
+
+  if (r.why && r.why.length) h += '<div class="why">' + esc(r.why.join(" \u00b7 ")) + "</div>";
+
+  return h + "</div>";
+}
+
+init();
+</script>
+</body>
+</html>

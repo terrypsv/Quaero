@@ -1,0 +1,9 @@
+quaero
+quaero.exe
+/dist/
+*.local.yaml
+.env
+OPS.md
+.idea/
+.vscode/
+.DS_Store
