@@ -1,3 +1,6 @@
+<img width="485" height="184" alt="ascii-art-text" src="https://github.com/user-attachments/assets/f68fb629-efe8-459d-889e-611113698594" />
+
+
 # Quaero
 
 Recherche de depots GitHub par intention, avec un verdict sur la sante de ce
