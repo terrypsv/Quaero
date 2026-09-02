@@ -26,13 +26,15 @@ func main() {
 	showVersion := flag.Bool("version", false, "afficher la version et quitter")
 	saveToken := flag.String("save-token", "", "enregistrer un jeton GitHub et quitter")
 	forget := flag.Bool("forget-token", false, "oublier le jeton enregistre et quitter")
+	auditQuery := flag.String("audit", "", "auditer la sante des depots correspondant a cette requete, puis quitter")
+	auditJSON := flag.String("audit-json", "", "avec -audit: ecrire le rapport au schema partage dans ce fichier")
+	auditLimit := flag.Int("audit-limit", 30, "avec -audit: nombre de depots a evaluer")
 	flag.Parse()
 
 	if *showVersion {
 		fmt.Printf("quaero %s\n", version)
 		return
 	}
-
 	if *forget {
 		path, err := github.ForgetToken()
 		if err != nil {
@@ -42,7 +44,6 @@ func main() {
 		fmt.Printf("jeton oublie (%s)\n", path)
 		return
 	}
-
 	if *saveToken != "" {
 		path, err := github.SaveToken(*saveToken)
 		if err != nil {
@@ -52,6 +53,13 @@ func main() {
 		fmt.Printf("jeton enregistre dans %s\n", path)
 		fmt.Println("Il sera utilise automatiquement aux prochains demarrages.")
 		return
+	}
+	if *auditQuery != "" {
+		code, err := runAudit(*auditQuery, *auditLimit, *auditJSON)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "erreur: %v\n", err)
+		}
+		os.Exit(code)
 	}
 
 	client, err := github.New()
@@ -68,15 +76,12 @@ func main() {
 		fmt.Fprintln(os.Stderr, "  bash       : export GITHUB_TOKEN=...")
 		os.Exit(2)
 	}
-
 	server := &webui.Server{Client: client, Version: version}
-
 	httpServer := &http.Server{
 		Addr:              *addr,
 		Handler:           server.Handler(),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
-
 	// The default address is loopback on purpose: the process carries a GitHub
 	// token, and a tool bound to every interface by default is a tool that
 	// leaks that token the first time it runs on an untrusted network.
