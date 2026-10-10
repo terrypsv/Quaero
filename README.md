@@ -169,12 +169,46 @@ champ.
 Chaque résultat indique ce qui lui a valu sa place. Un classement que personne
 ne peut interroger est un classement auquel personne ne devrait se fier.
 
+## Audit de code
+
+Au-delà de la santé d'un dépôt, Quaero audite la sécurité de son code. Le
+périmètre reste la lecture: l'outil analyse un dépôt **déjà cloné sur le
+disque**, il ne sonde ni n'exploite aucun système en fonctionnement.
+
+```bash
+quaero -scan /chemin/vers/un/depot
+quaero -scan /chemin/vers/un/depot -scan-json rapport.json
+```
+
+Quaero n'invente pas de moteur: il orchestre des analyseurs statiques établis,
+**multi-langages**, et normalise leurs sorties dans le schéma de constat
+partagé. Les moteurs sont choisis selon ce que contient le dépôt.
+
+| Analyseur | Langages | Ce qu'il regarde |
+|-----------|----------|------------------|
+| semgrep | Go, Python, JS/TS, Java, PHP, Ruby, C... | motifs de code non sûrs |
+| osv-scanner | tous écosystèmes (npm, PyPI, Go, Maven, crates...) | dépendances vulnérables connues (base OSV) |
+| govulncheck | Go | dépendances vulnérables, et si le symbole fautif est *atteignable* |
+| gosec | Go | motifs non sûrs propres à Go |
+
+semgrep et osv-scanner se déclenchent partout; govulncheck et gosec ne
+s'ajoutent que si un `go.mod` est présent. Un analyseur absent du `PATH` laisse
+un constat d'information plutôt que de disparaître du rapport.
+
+Chaque constat sort en statut `review` et `declared=false`. L'analyse statique
+produit des **candidats**, pas des verdicts: confirmer une faille se fait sur
+une instance locale montée soi-même, et la déclarer passe par une divulgation
+coordonnée (GitHub Security Advisory). L'outil trie, l'opérateur décide.
+
 ## Structure
 
 ```
 internal/intent/    lecture de la phrase vers des facettes
 internal/github/    appel de l'API de recherche, sans jugement
 internal/rank/      pertinence et santé, deux jugements distincts
+internal/audit/     santé des dépôts d'une requête, vers le schéma de constat
+internal/codescan/  audit de code d'un dépôt local (govulncheck, gosec)
+internal/finding/   schéma de constat partagé par la suite
 internal/webui/     serveur HTTP et page embarquée
 cmd/quaero/         point d'entrée
 ```

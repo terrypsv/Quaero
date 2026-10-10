@@ -29,6 +29,8 @@ func main() {
 	auditQuery := flag.String("audit", "", "auditer la sante des depots correspondant a cette requete, puis quitter")
 	auditJSON := flag.String("audit-json", "", "avec -audit: ecrire le rapport au schema partage dans ce fichier")
 	auditLimit := flag.Int("audit-limit", 30, "avec -audit: nombre de depots a evaluer")
+	scanPath := flag.String("scan", "", "analyser le code d'un depot local a ce chemin, puis quitter")
+	scanJSON := flag.String("scan-json", "", "avec -scan: ecrire le rapport au schema partage dans ce fichier")
 	flag.Parse()
 
 	if *showVersion {
@@ -56,6 +58,13 @@ func main() {
 	}
 	if *auditQuery != "" {
 		code, err := runAudit(*auditQuery, *auditLimit, *auditJSON)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "erreur: %v\n", err)
+		}
+		os.Exit(code)
+	}
+	if *scanPath != "" {
+		code, err := runScan(*scanPath, *scanJSON)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "erreur: %v\n", err)
 		}
