@@ -38,7 +38,7 @@ func (Govulncheck) Name() string { return "govulncheck" }
 
 // Available dit si le binaire est trouvable dans le PATH.
 func (g Govulncheck) Available() bool {
-	_, err := exec.LookPath(g.bin())
+	_, err := resolveBin(g.bin())
 	return err == nil
 }
 
@@ -46,7 +46,11 @@ func (g Govulncheck) Available() bool {
 func (g Govulncheck) Scan(ctx context.Context, dir string) ([]finding.Finding, error) {
 	// -json rend un flux d'objets; -C fixe le dossier de travail sans dependre
 	// du cwd du processus appelant. On vise tout le module.
-	cmd := exec.CommandContext(ctx, g.bin(), "-json", "-C", dir, "./...")
+	bin, err := resolveBin(g.bin())
+	if err != nil {
+		return nil, err
+	}
+	cmd := exec.CommandContext(ctx, bin, "-json", "-C", dir, "./...")
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
