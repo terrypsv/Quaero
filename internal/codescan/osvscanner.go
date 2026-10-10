@@ -39,13 +39,17 @@ func (OSVScanner) Name() string { return "osv-scanner" }
 
 // Available dit si le binaire est trouvable dans le PATH.
 func (o OSVScanner) Available() bool {
-	_, err := exec.LookPath(o.bin())
+	_, err := resolveBin(o.bin())
 	return err == nil
 }
 
 // Scan execute osv-scanner sur dir et normalise sa sortie.
 func (o OSVScanner) Scan(ctx context.Context, dir string) ([]finding.Finding, error) {
-	cmd := exec.CommandContext(ctx, o.bin(), "--format", "json", "-r", dir)
+	bin, err := resolveBin(o.bin())
+	if err != nil {
+		return nil, err
+	}
+	cmd := exec.CommandContext(ctx, bin, "--format", "json", "-r", dir)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr

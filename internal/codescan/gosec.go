@@ -35,7 +35,7 @@ func (Gosec) Name() string { return "gosec" }
 
 // Available dit si le binaire est trouvable dans le PATH.
 func (g Gosec) Available() bool {
-	_, err := exec.LookPath(g.bin())
+	_, err := resolveBin(g.bin())
 	return err == nil
 }
 
@@ -44,7 +44,11 @@ func (g Gosec) Scan(ctx context.Context, dir string) ([]finding.Finding, error) 
 	// -fmt=json sur stdout, -quiet pour ne pas melanger du texte au JSON. gosec
 	// sort en code non nul des qu'il trouve une issue: on lit le JSON quand
 	// meme.
-	cmd := exec.CommandContext(ctx, g.bin(), "-fmt=json", "-quiet", "./...")
+	bin, err := resolveBin(g.bin())
+	if err != nil {
+		return nil, err
+	}
+	cmd := exec.CommandContext(ctx, bin, "-fmt=json", "-quiet", "./...")
 	cmd.Dir = dir
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout

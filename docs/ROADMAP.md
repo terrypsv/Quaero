@@ -33,6 +33,8 @@ lecture: Quaero analyse, il n'exploite rien.
 - [x] Moteurs multi-langages, choisis selon le dépôt: semgrep (SAST) et
       osv-scanner (dépendances, tous écosystèmes) partout, govulncheck et gosec
       quand un `go.mod` est présent
+- [x] Moteurs retrouvés hors du `PATH` (GOBIN, GOPATH/bin, ~/go/bin,
+      ~/.local/bin), le message d'absence dit où ils ont été cherchés
 - [x] Tout constat en `review`, `declared=false`: l'outil trie des candidats,
       il ne confirme ni ne déclare rien
 - [ ] Vue web des constats de code, à côté du verdict de santé

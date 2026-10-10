@@ -192,8 +192,13 @@ partagé. Les moteurs sont choisis selon ce que contient le dépôt.
 | gosec | Go | motifs non sûrs propres à Go |
 
 semgrep et osv-scanner se déclenchent partout; govulncheck et gosec ne
-s'ajoutent que si un `go.mod` est présent. Un analyseur absent du `PATH` laisse
-un constat d'information plutôt que de disparaître du rapport.
+s'ajoutent que si un `go.mod` est présent.
+
+Un moteur est cherché dans le `PATH`, puis là où les installateurs le posent
+sans toujours l'y ajouter, `GOBIN`, `GOPATH/bin`, `~/go/bin` pour `go install`
+et `~/.local/bin` pour pip hors Windows. Un moteur introuvable laisse un
+constat d'information qui dit où il a été cherché, plutôt que de disparaître
+du rapport.
 
 Chaque constat sort en statut `review` et `declared=false`. L'analyse statique
 produit des **candidats**, pas des verdicts: confirmer une faille se fait sur

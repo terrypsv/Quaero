@@ -45,13 +45,17 @@ func (Semgrep) Name() string { return "semgrep" }
 
 // Available dit si le binaire est trouvable dans le PATH.
 func (s Semgrep) Available() bool {
-	_, err := exec.LookPath(s.bin())
+	_, err := resolveBin(s.bin())
 	return err == nil
 }
 
 // Scan execute semgrep sur dir et normalise sa sortie.
 func (s Semgrep) Scan(ctx context.Context, dir string) ([]finding.Finding, error) {
-	cmd := exec.CommandContext(ctx, s.bin(),
+	bin, err := resolveBin(s.bin())
+	if err != nil {
+		return nil, err
+	}
+	cmd := exec.CommandContext(ctx, bin,
 		"--config", s.config(), "--json", "--quiet", dir)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout

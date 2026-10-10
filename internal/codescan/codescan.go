@@ -12,8 +12,8 @@
 //
 // Il n'invente aucun moteur. Il orchestre des analyseurs statiques etablis
 // (govulncheck, gosec) et se contente de normaliser leurs sorties. Un scanner
-// maison serait moins fiable sur ce qui est difficile — le tri des faux
-// positifs — et donnerait l'illusion d'une autorite qu'il n'a pas.
+// maison serait moins fiable sur ce qui est difficile, le tri des faux
+// positifs, et donnerait l'illusion d'une autorite qu'il n'a pas.
 //
 // Tout constat sort en Status "review" et Declared=false. L'analyse statique
 // produit des candidats, pas des verdicts: la confirmation et la divulgation
@@ -25,6 +25,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/terrypsv/Quaero/internal/finding"
 )
@@ -116,7 +117,7 @@ func unavailable(name string) finding.Finding {
 		Category: Category,
 		Severity: finding.SeverityInfo,
 		Status:   finding.StatusReview,
-		Observed: fmt.Sprintf("%s n'est pas installe ou introuvable dans le PATH", name),
+		Observed: fmt.Sprintf("%s introuvable dans le PATH et dans %s", name, strings.Join(installDirs(), ", ")),
 		Remediation: fmt.Sprintf(
 			"Installer %s pour que cette couche d'analyse soit evaluee.", name),
 		Declared: finding.Bool(false),
