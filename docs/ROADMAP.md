@@ -46,6 +46,8 @@ lecture: Quaero analyse, il n'exploite rien.
       manifeste ne passe plus pour un dépôt sain
 - [x] semgrep sans télémétrie (`--metrics=off`, `p/default`), utilisable sous
       Windows via pipx ou uv
+- [x] Identifiant complet des règles semgrep conservé dans les preuves, pour
+      des annotations `nosemgrep` précises
 - [ ] Arrêt de tout l'arbre de processus d'un moteur interrompu, avec gestion
       de Ctrl+C. Aujourd'hui seul le moteur est arrêté, ses éventuels
       sous-processus peuvent finir seuls après la fin du scan
