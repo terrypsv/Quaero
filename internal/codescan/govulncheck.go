@@ -9,7 +9,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"os/exec"
 	"sort"
 	"strings"
 
@@ -44,31 +43,27 @@ func (g Govulncheck) Available() bool {
 
 // Scan execute govulncheck sur dir et normalise sa sortie.
 func (g Govulncheck) Scan(ctx context.Context, dir string) ([]finding.Finding, error) {
-	// -json rend un flux d'objets; -C fixe le dossier de travail sans dependre
-	// du cwd du processus appelant. On vise tout le module.
 	bin, err := resolveBin(g.bin())
 	if err != nil {
 		return nil, err
 	}
-	// #nosec G204 -- aucun shell: binaire resolu depuis un nom fixe, arguments
-	// separes, et le chemin analyse est absolu (absDir), jamais lu comme une option.
-	cmd := exec.CommandContext(ctx, bin, "-json", "-C", dir, "./...")
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	// govulncheck sort en code non nul des qu'il trouve une vulnerabilite: ce
-	// n'est pas une erreur d'execution. On ne traite comme erreur que l'absence
-	// de sortie JSON exploitable.
-	runErr := cmd.Run()
-
-	fs, parseErr := parseGovulncheck(stdout.Bytes())
-	if parseErr != nil {
-		if runErr != nil {
-			return nil, fmt.Errorf("%w (stderr: %s)", runErr, strings.TrimSpace(stderr.String()))
-		}
-		return nil, parseErr
+	// -json rend un flux d'objets; -C fixe le dossier de travail sans dependre
+	// du cwd du processus appelant. On vise tout le module.
+	res, err := runTool(ctx, bin, dir, "-json", "-C", dir, "./...")
+	if err != nil {
+		return nil, err
 	}
-	return fs, nil
+	return interpretGovulncheck(res)
+}
+
+// interpretGovulncheck lit le code de sortie avant le flux. En mode -json,
+// govulncheck sort en 0 quel que soit le nombre de vulnerabilites trouvees:
+// tout autre code est une panne, meme si un debut de flux a ete ecrit.
+func interpretGovulncheck(res toolResult) ([]finding.Finding, error) {
+	if err := res.accept(0); err != nil {
+		return nil, err
+	}
+	return parseGovulncheck(res.stdout)
 }
 
 // --- Schema du flux govulncheck -json ---

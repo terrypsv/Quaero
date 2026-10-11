@@ -13,6 +13,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/terrypsv/Quaero/internal/codescan"
 	"github.com/terrypsv/Quaero/internal/github"
 	"github.com/terrypsv/Quaero/internal/webui"
 )
@@ -31,6 +32,7 @@ func main() {
 	auditLimit := flag.Int("audit-limit", 30, "avec -audit: nombre de depots a evaluer")
 	scanPath := flag.String("scan", "", "analyser le code d'un depot local a ce chemin, puis quitter")
 	scanJSON := flag.String("scan-json", "", "avec -scan: ecrire le rapport au schema partage dans ce fichier")
+	scanTimeout := flag.Duration("scan-timeout", codescan.DefaultTimeout, "avec -scan: duree maximale accordee a chaque moteur (ex. 5m, 30m)")
 	flag.Parse()
 
 	if *showVersion {
@@ -64,7 +66,7 @@ func main() {
 		os.Exit(code)
 	}
 	if *scanPath != "" {
-		code, err := runScan(*scanPath, *scanJSON)
+		code, err := runScan(*scanPath, *scanJSON, *scanTimeout)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "erreur: %v\n", err)
 		}

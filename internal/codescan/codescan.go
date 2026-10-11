@@ -22,10 +22,14 @@ package codescan
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/terrypsv/Quaero/internal/finding"
 )
@@ -44,14 +48,47 @@ type Scanner interface {
 	Scan(ctx context.Context, dir string) ([]finding.Finding, error)
 }
 
-// Run lance chaque analyseur sur dir et agrege leurs constats dans un rapport
-// unique au schema partage. Un analyseur absent n'est pas une erreur: il laisse
-// un constat d'information et la course continue, parce qu'un rapport muet sur
-// ce qu'il n'a pas pu mesurer serait trompeur.
+// DefaultTimeout borne la duree accordee a chaque moteur. Un moteur bloque ne
+// doit pas bloquer le scan entier: au-dela, il est interrompu et le rapport le
+// dit, plutot que de rendre la main sans fin.
+const DefaultTimeout = 15 * time.Minute
+
+// Options regle une execution de Run.
+type Options struct {
+	// Timeout borne chaque moteur. Zero ou negatif vaut DefaultTimeout.
+	Timeout time.Duration
+}
+
+// Run lance les analyseurs avec les options par defaut. Voir RunWith.
 func Run(ctx context.Context, dir, version string, scanners ...Scanner) (*finding.Report, error) {
+	return RunWith(ctx, dir, version, Options{}, scanners...)
+}
+
+// outcome est ce qu'un moteur a rendu, garde a sa place pour que le rapport
+// reste dans l'ordre des moteurs quel que soit celui qui finit le premier.
+type outcome struct {
+	available bool
+	findings  []finding.Finding
+	err       error
+	elapsed   time.Duration
+}
+
+// RunWith lance chaque analyseur sur dir et agrege leurs constats dans un
+// rapport unique au schema partage.
+//
+// Les moteurs tournent en parallele: ils ne partagent rien et le plus lent
+// fixait jusqu'ici la duree du total des autres. Chacun a son propre delai. Un
+// moteur absent, en panne ou interrompu laisse un constat d'information plutot
+// que de disparaitre, parce qu'un rapport muet sur ce qu'il n'a pas pu mesurer
+// serait trompeur.
+func RunWith(ctx context.Context, dir, version string, opt Options, scanners ...Scanner) (*finding.Report, error) {
 	abs, err := absDir(dir)
 	if err != nil {
 		return nil, err
+	}
+	timeout := opt.Timeout
+	if timeout <= 0 {
+		timeout = DefaultTimeout
 	}
 
 	host, _ := os.Hostname()
@@ -64,20 +101,37 @@ func Run(ctx context.Context, dir, version string, scanners ...Scanner) (*findin
 		},
 	)
 
-	ran := []string{}
-	var found []finding.Finding
-	for _, s := range scanners {
+	results := make([]outcome, len(scanners))
+	var wg sync.WaitGroup
+	for i, s := range scanners {
 		if !s.Available() {
+			continue
+		}
+		results[i].available = true
+		wg.Add(1)
+		go func(i int, s Scanner) {
+			defer wg.Done()
+			results[i] = runOne(ctx, s, abs, timeout)
+		}(i, s)
+	}
+	wg.Wait()
+
+	ran := []string{}
+	durations := map[string]float64{}
+	var found []finding.Finding
+	for i, s := range scanners {
+		r := results[i]
+		if !r.available {
 			rep.Add(unavailable(s.Name()))
 			continue
 		}
 		ran = append(ran, s.Name())
-		fs, err := s.Scan(ctx, abs)
-		if err != nil {
-			rep.Add(scanError(s.Name(), err))
+		durations[s.Name()] = math.Round(r.elapsed.Seconds()*100) / 100
+		if r.err != nil {
+			rep.Add(scanError(s.Name(), r.err))
 			continue
 		}
-		for _, f := range fs {
+		for _, f := range r.findings {
 			// Invariant de la couche: un scan n'emet jamais un constat deja
 			// declare. La confirmation et la declaration sont des actes humains,
 			// posterieurs et hors de l'outil.
@@ -97,9 +151,34 @@ func Run(ctx context.Context, dir, version string, scanners ...Scanner) (*findin
 	// Une fusion silencieuse serait un mensonge par omission: le rapport dit
 	// combien de constats en double ont ete regroupes.
 	rep.Run.Context["doublons_fusionnes"] = len(found) - len(kept)
+	// La duree de chaque moteur dit ou passe le temps d'un scan.
+	rep.Run.Context["durees_s"] = durations
+	rep.Run.Context["delai_moteur_s"] = timeout.Seconds()
 
 	rep.Finish()
 	return rep, nil
+}
+
+// runOne execute un moteur sous son propre delai. Un moteur interrompu est une
+// panne, meme s'il a rendu une liste vide sans erreur: un resultat partiel ne
+// doit jamais passer pour un depot sain.
+func runOne(ctx context.Context, s Scanner, dir string, timeout time.Duration) outcome {
+	sctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	start := time.Now()
+	fs, err := s.Scan(sctx, dir)
+	out := outcome{available: true, findings: fs, err: err, elapsed: time.Since(start)}
+
+	switch ctxErr := sctx.Err(); {
+	case errors.Is(ctxErr, context.DeadlineExceeded):
+		out.findings = nil
+		out.err = fmt.Errorf("interrompu apres %s, delai maximal atteint", timeout)
+	case ctxErr != nil:
+		out.findings = nil
+		out.err = fmt.Errorf("interrompu: %w", ctxErr)
+	}
+	return out
 }
 
 // absDir verifie que dir existe, est un dossier, et en rend le chemin absolu.
@@ -133,6 +212,21 @@ func unavailable(name string) finding.Finding {
 		Remediation: fmt.Sprintf(
 			"Installer %s pour que cette couche d'analyse soit evaluee.", name),
 		Declared: finding.Bool(false),
+	}
+}
+
+// nothingToCheck est le constat laisse par un moteur qui a tourne sans rien
+// trouver a analyser. Ce n'est pas un depot sain: c'est un depot non verifie.
+func nothingToCheck(name, observed, remediation string) finding.Finding {
+	return finding.Finding{
+		ID:          "QRO-SCAN-VIDE-" + name,
+		Title:       "Rien a analyser pour " + name,
+		Category:    Category,
+		Severity:    finding.SeverityInfo,
+		Status:      finding.StatusReview,
+		Observed:    observed,
+		Remediation: remediation,
+		Declared:    finding.Bool(false),
 	}
 }
 

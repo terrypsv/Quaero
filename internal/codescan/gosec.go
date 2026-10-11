@@ -8,7 +8,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os/exec"
 	"strings"
 
 	"github.com/terrypsv/Quaero/internal/finding"
@@ -41,30 +40,25 @@ func (g Gosec) Available() bool {
 
 // Scan execute gosec sur dir et normalise sa sortie.
 func (g Gosec) Scan(ctx context.Context, dir string) ([]finding.Finding, error) {
-	// -fmt=json sur stdout, -quiet pour ne pas melanger du texte au JSON. gosec
-	// sort en code non nul des qu'il trouve une issue: on lit le JSON quand
-	// meme.
 	bin, err := resolveBin(g.bin())
 	if err != nil {
 		return nil, err
 	}
-	// #nosec G204 -- aucun shell: binaire resolu depuis un nom fixe, arguments
-	// separes, et le chemin analyse est absolu (absDir), jamais lu comme une option.
-	cmd := exec.CommandContext(ctx, bin, "-fmt=json", "-quiet", "./...")
-	cmd.Dir = dir
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	runErr := cmd.Run()
-
-	fs, parseErr := parseGosec(stdout.Bytes())
-	if parseErr != nil {
-		if runErr != nil {
-			return nil, fmt.Errorf("%w (stderr: %s)", runErr, strings.TrimSpace(stderr.String()))
-		}
-		return nil, parseErr
+	// -fmt=json sur stdout, -quiet pour ne pas melanger du texte au JSON.
+	res, err := runTool(ctx, bin, dir, "-fmt=json", "-quiet", "./...")
+	if err != nil {
+		return nil, err
 	}
-	return fs, nil
+	return interpretGosec(res)
+}
+
+// interpretGosec lit le code de sortie avant le JSON. gosec sort en 1 des qu'il
+// trouve une issue, ce n'est pas une panne. Tout autre code en est une.
+func interpretGosec(res toolResult) ([]finding.Finding, error) {
+	if err := res.accept(0, 1); err != nil {
+		return nil, err
+	}
+	return parseGosec(res.stdout)
 }
 
 // --- Schema de la sortie gosec -fmt=json ---

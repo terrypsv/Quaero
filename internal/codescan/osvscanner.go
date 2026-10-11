@@ -8,8 +8,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os/exec"
-	"strings"
 
 	"github.com/terrypsv/Quaero/internal/finding"
 )
@@ -49,22 +47,26 @@ func (o OSVScanner) Scan(ctx context.Context, dir string) ([]finding.Finding, er
 	if err != nil {
 		return nil, err
 	}
-	// #nosec G204 -- aucun shell: binaire resolu depuis un nom fixe, arguments
-	// separes, et le chemin analyse est absolu (absDir), jamais lu comme une option.
-	cmd := exec.CommandContext(ctx, bin, "--format", "json", "-r", dir)
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	runErr := cmd.Run()
-
-	fs, parseErr := parseOSV(stdout.Bytes())
-	if parseErr != nil {
-		if runErr != nil {
-			return nil, fmt.Errorf("%w (stderr: %s)", runErr, strings.TrimSpace(stderr.String()))
-		}
-		return nil, parseErr
+	res, err := runTool(ctx, bin, dir, "--format", "json", "-r", dir)
+	if err != nil {
+		return nil, err
 	}
-	return fs, nil
+	return interpretOSV(res)
+}
+
+// interpretOSV lit le code de sortie avant le JSON. 0 rien de vulnerable, 1 des
+// vulnerabilites trouvees, 128 aucune dependance a verifier, le reste une panne.
+// Le cas 128 ne doit jamais ressortir comme un depot sain: rien n'a ete verifie.
+func interpretOSV(res toolResult) ([]finding.Finding, error) {
+	if res.exitCode == 128 {
+		return []finding.Finding{nothingToCheck("osv-scanner",
+			"aucun manifeste de dependances reconnu, rien n'a pu etre verifie",
+			"Normal pour un depot sans dependances declarees. Sinon, verifier que les manifestes et fichiers de verrouillage sont bien versionnes.")}, nil
+	}
+	if err := res.accept(0, 1); err != nil {
+		return nil, err
+	}
+	return parseOSV(res.stdout)
 }
 
 // --- Schema de la sortie osv-scanner --format json ---
