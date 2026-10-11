@@ -46,6 +46,9 @@ type Client struct {
 	HTTP    *http.Client
 	Token   string
 	BaseURL string
+	// Source says where Token was read, so that a refused credential points
+	// at the place to fix rather than at a variable that may not even be set.
+	Source string
 }
 
 // RateLimit is what the API says about the budget left.
@@ -63,7 +66,7 @@ type RateLimit struct {
 // requiring one specific name would be a trap for whoever already has the
 // other set.
 func New() (*Client, error) {
-	token := firstNonEmpty(os.Getenv("GITHUB_TOKEN"), os.Getenv("GH_TOKEN"), LoadToken())
+	token, source := resolveToken()
 	if token == "" {
 		return nil, ErrNoToken
 	}
@@ -71,7 +74,47 @@ func New() (*Client, error) {
 		HTTP:    &http.Client{Timeout: 20 * time.Second},
 		Token:   token,
 		BaseURL: apiBase,
+		Source:  source,
 	}, nil
+}
+
+// Token sources, in the order they are tried.
+const (
+	SourceGitHubToken = "GITHUB_TOKEN"
+	SourceGHToken     = "GH_TOKEN"
+	SourceFile        = "fichier"
+)
+
+// resolveToken returns the first credential found and where it came from.
+func resolveToken() (token, source string) {
+	if t := strings.TrimSpace(os.Getenv("GITHUB_TOKEN")); t != "" {
+		return t, SourceGitHubToken
+	}
+	if t := strings.TrimSpace(os.Getenv("GH_TOKEN")); t != "" {
+		return t, SourceGHToken
+	}
+	if t := LoadToken(); t != "" {
+		return t, SourceFile
+	}
+	return "", ""
+}
+
+// refusedTokenHint says where the refused credential was read and what to do
+// about it there. GitHub answers "Bad credentials" alike for a revoked, an
+// expired or a mistyped token, so the place is the only useful lead.
+func refusedTokenHint(source string) string {
+	switch source {
+	case SourceGitHubToken, SourceGHToken:
+		return fmt.Sprintf("lu dans la variable %s, la remplacer, ou la retirer si un jeton est enregistre avec -save-token", source)
+	case SourceFile:
+		path, err := ConfigPath()
+		if err != nil {
+			path = "le fichier de configuration"
+		}
+		return fmt.Sprintf("enregistre dans %s, expire ou revoque, le remplacer avec -save-token ou l'oublier avec -forget-token", path)
+	default:
+		return "verifier GITHUB_TOKEN, GH_TOKEN ou le jeton enregistre avec -save-token"
+	}
 }
 
 type searchResponse struct {
@@ -167,7 +210,7 @@ func (c *Client) Search(ctx context.Context, query string, limit, page int) ([]m
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, 0, rate, apiError(resp.StatusCode, payload, rate)
+		return nil, 0, rate, apiError(resp.StatusCode, payload, rate, c.Source)
 	}
 
 	repos := make([]model.Repo, 0, len(payload.Items))
@@ -178,7 +221,7 @@ func (c *Client) Search(ctx context.Context, query string, limit, page int) ([]m
 }
 
 // apiError turns an HTTP failure into a message that says what to do next.
-func apiError(status int, payload searchResponse, rate RateLimit) error {
+func apiError(status int, payload searchResponse, rate RateLimit, source string) error {
 	detail := payload.Message
 	for _, e := range payload.Errors {
 		if e.Message != "" {
@@ -187,7 +230,7 @@ func apiError(status int, payload searchResponse, rate RateLimit) error {
 	}
 	switch status {
 	case http.StatusUnauthorized:
-		return fmt.Errorf("jeton GitHub refuse: verifier GITHUB_TOKEN (%s)", detail)
+		return fmt.Errorf("jeton GitHub refuse (%s): %s", detail, refusedTokenHint(source))
 	case http.StatusForbidden:
 		if rate.Remaining == 0 {
 			return fmt.Errorf("quota GitHub epuise, reinitialisation a %s",
@@ -254,13 +297,4 @@ func atoiOr(s string, fallback int) int {
 		return fallback
 	}
 	return n
-}
-
-func firstNonEmpty(values ...string) string {
-	for _, v := range values {
-		if strings.TrimSpace(v) != "" {
-			return strings.TrimSpace(v)
-		}
-	}
-	return ""
 }

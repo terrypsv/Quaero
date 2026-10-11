@@ -104,6 +104,12 @@ export GITHUB_TOKEN=...        # bash
 $env:GITHUB_TOKEN="..."        # PowerShell
 ```
 
+Le jeton est cherché dans cet ordre, `GITHUB_TOKEN`, `GH_TOKEN`, puis le
+fichier. GitHub répond `Bad credentials` de la même façon pour un jeton expiré,
+révoqué ou mal copié, alors un refus nomme l'endroit où le jeton a été lu et le
+remède qui va avec (remplacer la variable, ou `-save-token` / `-forget-token`
+pour le fichier).
+
 Le quota restant est affiché à chaque recherche, pour qu'une coupure imminente
 se voie venir plutôt que de surprendre.
 
