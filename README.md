@@ -112,6 +112,32 @@ par défaut, parce que le processus porte un jeton: un outil exposé sur toutes
 les interfaces par défaut est un outil qui laisse fuir ce jeton la première
 fois qu'il tourne sur un réseau qui n'est pas le sien.
 
+### Session locale protégée
+
+Écouter sur 127.0.0.1 ne suffit pas. Une page web malveillante ouverte dans le
+navigateur peut atteindre ce port par DNS rebinding, en faisant pointer un
+domaine qu'elle contrôle vers 127.0.0.1. Deux verrous indépendants s'y opposent.
+
+- L'en-tête `Host` doit désigner cette machine (`127.0.0.1`, `localhost`,
+  `[::1]`, au bon port). Une requête rebondie porte le domaine de l'attaquant,
+  elle est refusée avant tout traitement.
+- Chaque lancement tire un jeton de session de 256 bits, qui ne vit qu'en
+  mémoire. Le terminal affiche le lien qui ouvre la session:
+
+```
+quaero dev - http://127.0.0.1:7777/?t=<jeton>
+Ce lien ouvre la session. Il ne vaut que pour cette execution, ne le partage pas.
+```
+
+Le jeton passe une fois dans l'adresse, puis vit dans un cookie `HttpOnly` et
+`SameSite=Strict`, et l'adresse est nettoyée. Sans lui, la page comme l'API
+répondent 401. La comparaison se fait en temps constant. Les réponses portent
+une politique de contenu stricte (aucune ressource extérieure, pas d'intégration
+dans un cadre) et `Referrer-Policy: no-referrer`.
+
+Écouter sur toutes les interfaces (`-addr 0.0.0.0:7777`) désactive le contrôle
+de `Host`, le jeton reste exigé, et le terminal le signale.
+
 ## Ce que la phrase peut exprimer
 
 | Ce qu'on écrit | Ce qui est compris |
