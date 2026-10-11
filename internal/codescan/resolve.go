@@ -15,7 +15,7 @@ import (
 // resolveBin trouve le binaire d'un moteur. Le PATH d'abord, puis les dossiers
 // ou les installateurs usuels deposent leurs binaires sans toujours les ajouter
 // au PATH: GOBIN, chaque GOPATH\bin, ~/go/bin pour `go install`, et
-// ~/.local/bin pour pip et pipx hors Windows.
+// ~/.local/bin pour pipx et uv, y compris sous Windows.
 //
 // Un moteur installe mais invisible est le pire des cas: le rapport dirait
 // "absent" alors que l'outil est la. Chercher la ou il a ete pose evite de
@@ -55,9 +55,7 @@ func installDirs() []string {
 	}
 	if home, err := os.UserHomeDir(); err == nil && home != "" {
 		dirs = append(dirs, filepath.Join(home, "go", "bin"))
-		if runtime.GOOS != "windows" {
-			dirs = append(dirs, filepath.Join(home, ".local", "bin"))
-		}
+		dirs = append(dirs, filepath.Join(home, ".local", "bin"))
 	}
 
 	seen := map[string]bool{}

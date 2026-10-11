@@ -40,6 +40,15 @@ lecture: Quaero analyse, il n'exploite rien.
       provenance garde tous les moteurs d'accord
 - [x] Tout constat en `review`, `declared=false`: l'outil trie des candidats,
       il ne confirme ni ne déclare rien
+- [x] Moteurs en parallèle, délai par moteur (`-scan-timeout`), durées au
+      rapport
+- [x] Code de sortie lu moteur par moteur: une panne ou un dépôt sans
+      manifeste ne passe plus pour un dépôt sain
+- [x] semgrep sans télémétrie (`--metrics=off`, `p/default`), utilisable sous
+      Windows via pipx ou uv
+- [ ] Arrêt de tout l'arbre de processus d'un moteur interrompu, avec gestion
+      de Ctrl+C. Aujourd'hui seul le moteur est arrêté, ses éventuels
+      sous-processus peuvent finir seuls après la fin du scan
 - [ ] Vue web des constats de code, à côté du verdict de santé
 - [ ] Bac à sable d'exécution pour analyser un dépôt tiers non fiable
 

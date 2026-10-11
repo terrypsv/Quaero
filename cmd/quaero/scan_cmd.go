@@ -9,7 +9,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
+	"time"
 
 	"github.com/terrypsv/Quaero/internal/codescan"
 )
@@ -39,8 +41,9 @@ func selectScanners(dir string) []codescan.Scanner {
 // Rappel porte par l'outil lui-meme: les constats sortent en "review", jamais
 // confirmes. Confirmer une faille et la divulguer de facon coordonnee reste un
 // acte humain, hors de l'outil.
-func runScan(dir, jsonPath string) (int, error) {
-	rep, err := codescan.Run(context.Background(), dir, version, selectScanners(dir)...)
+func runScan(dir, jsonPath string, timeout time.Duration) (int, error) {
+	opt := codescan.Options{Timeout: timeout}
+	rep, err := codescan.RunWith(context.Background(), dir, version, opt, selectScanners(dir)...)
 	if err != nil {
 		return 2, err
 	}
@@ -61,6 +64,9 @@ func runScan(dir, jsonPath string) (int, error) {
 		fmt.Printf(", %d doublon(s) entre moteurs fusionne(s)", merged)
 	}
 	fmt.Println()
+	if line := durationsLine(rep.Run.Context["durees_s"]); line != "" {
+		fmt.Println(line)
+	}
 	fmt.Println("Tous les constats sont a verifier manuellement avant toute declaration.")
 
 	if jsonPath != "" {
@@ -80,4 +86,23 @@ func runScan(dir, jsonPath string) (int, error) {
 		return 1, nil
 	}
 	return 0, nil
+}
+
+// durationsLine resume le temps passe par chaque moteur, pour voir ou part la
+// duree d'un scan. Vide si aucun moteur n'a tourne.
+func durationsLine(v any) string {
+	d, ok := v.(map[string]float64)
+	if !ok || len(d) == 0 {
+		return ""
+	}
+	names := make([]string, 0, len(d))
+	for n := range d {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	parts := make([]string, 0, len(names))
+	for _, n := range names {
+		parts = append(parts, fmt.Sprintf("%s %.1fs", n, d[n]))
+	}
+	return "Durees: " + strings.Join(parts, ", ")
 }

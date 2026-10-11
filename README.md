@@ -178,6 +178,7 @@ disque**, il ne sonde ni n'exploite aucun système en fonctionnement.
 ```bash
 quaero -scan /chemin/vers/un/depot
 quaero -scan /chemin/vers/un/depot -scan-json rapport.json
+quaero -scan /chemin/vers/un/depot -scan-timeout 30m
 ```
 
 Quaero n'invente pas de moteur: il orchestre des analyseurs statiques établis,
@@ -192,13 +193,28 @@ partagé. Les moteurs sont choisis selon ce que contient le dépôt.
 | gosec | Go | motifs non sûrs propres à Go |
 
 semgrep et osv-scanner se déclenchent partout; govulncheck et gosec ne
-s'ajoutent que si un `go.mod` est présent.
+s'ajoutent que si un `go.mod` est présent. semgrep est le seul des quatre à
+pouvoir relever une faille encore inconnue, les autres retrouvent des
+vulnérabilités déjà publiées.
+
+semgrep tourne avec le jeu de règles `p/default` et `--metrics=off`. Son mode
+`auto` est évité: il repose sur l'envoi de métriques, dont une empreinte de
+l'adresse du projet analysé, contraire au principe de Quaero de ne rien envoyer
+sur ce qu'il analyse. Sous Windows, semgrep s'installe avec `pipx install
+semgrep` ou `uv tool install semgrep`.
 
 Un moteur est cherché dans le `PATH`, puis là où les installateurs le posent
 sans toujours l'y ajouter, `GOBIN`, `GOPATH/bin`, `~/go/bin` pour `go install`
-et `~/.local/bin` pour pip hors Windows. Un moteur introuvable laisse un
+et `~/.local/bin` pour pipx et uv, Windows compris. Un moteur introuvable laisse un
 constat d'information qui dit où il a été cherché, plutôt que de disparaître
 du rapport.
+
+Les moteurs tournent en parallèle, chacun sous un délai propre (15 minutes par
+défaut, `-scan-timeout` pour le changer). Un moteur qui dépasse son délai est
+interrompu et le rapport le dit. Le code de sortie de chaque moteur est lu
+selon ses propres règles: un moteur en panne, ou osv-scanner qui ne trouve
+aucun manifeste à vérifier, ne ressort jamais comme un dépôt sain. Le résumé
+affiche la durée de chaque moteur.
 
 Deux moteurs qui signalent la même vulnérabilité connue, reconnue à un
 identifiant partagé (OSV, CVE ou GHSA), ne font qu'un constat. Le plus

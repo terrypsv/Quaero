@@ -8,21 +8,26 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os/exec"
 	"strings"
 
 	"github.com/terrypsv/Quaero/internal/finding"
 )
 
+// DefaultSemgrepConfig est le jeu de regles par defaut: la selection generale du
+// registre semgrep, multi-langages, peu bruyante. La qualite d'un constat compte
+// plus que leur nombre.
+const DefaultSemgrepConfig = "p/default"
+
 // Semgrep orchestre semgrep, un analyseur statique de motifs qui couvre la
 // plupart des langages courants (Go, Python, JS/TS, Java, PHP, Ruby, C...). Il
 // porte la couche "code ecrit ici" pour tout ce qui n'est pas Go, la ou gosec
-// s'arrete au seul Go.
+// s'arrete au seul Go. C'est aussi le seul moteur capable de relever une faille
+// encore inconnue: les autres ne retrouvent que des vulnerabilites publiees.
 type Semgrep struct {
 	// Bin est le nom ou chemin du binaire. Vide, "semgrep" est utilise.
 	Bin string
-	// Config est le jeu de regles. Vide, "auto" laisse semgrep choisir selon les
-	// langages detectes.
+	// Config est le jeu de regles. Vide, DefaultSemgrepConfig est utilise. Le
+	// mode "auto" de semgrep est evite: il repose sur l'envoi de metriques.
 	Config string
 }
 
@@ -37,7 +42,7 @@ func (s Semgrep) config() string {
 	if s.Config != "" {
 		return s.Config
 	}
-	return "auto"
+	return DefaultSemgrepConfig
 }
 
 // Name identifie l'analyseur.
@@ -55,23 +60,25 @@ func (s Semgrep) Scan(ctx context.Context, dir string) ([]finding.Finding, error
 	if err != nil {
 		return nil, err
 	}
-	// #nosec G204 -- aucun shell: binaire resolu depuis un nom fixe, arguments
-	// separes, et le chemin analyse est absolu (absDir), jamais lu comme une option.
-	cmd := exec.CommandContext(ctx, bin,
-		"--config", s.config(), "--json", "--quiet", dir)
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	runErr := cmd.Run()
-
-	fs, parseErr := parseSemgrep(stdout.Bytes())
-	if parseErr != nil {
-		if runErr != nil {
-			return nil, fmt.Errorf("%w (stderr: %s)", runErr, strings.TrimSpace(stderr.String()))
-		}
-		return nil, parseErr
+	// --metrics=off: par defaut semgrep envoie des metriques des que ses regles
+	// viennent de son registre, dont une empreinte de l'adresse du projet. Quaero
+	// n'envoie rien sur ce qu'il analyse.
+	res, err := runTool(ctx, bin, dir,
+		"scan", "--config", s.config(), "--metrics=off", "--json", "--quiet", dir)
+	if err != nil {
+		return nil, err
 	}
-	return fs, nil
+	return interpretSemgrep(res)
+}
+
+// interpretSemgrep lit le code de sortie avant le JSON. Sans --error, semgrep
+// sort en 0 meme quand il trouve quelque chose; 1 est accepte par prudence,
+// tout autre code est une panne.
+func interpretSemgrep(res toolResult) ([]finding.Finding, error) {
+	if err := res.accept(0, 1); err != nil {
+		return nil, err
+	}
+	return parseSemgrep(res.stdout)
 }
 
 // --- Schema de la sortie semgrep --json ---
