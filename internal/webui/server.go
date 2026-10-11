@@ -53,15 +53,21 @@ type Searcher interface {
 type Server struct {
 	Client  Searcher
 	Version string
+	// Token est le jeton de session de cette execution (voir NewToken). Vide,
+	// toute requete est refusee.
+	Token string
+	// Addr est l'adresse d'ecoute, d'ou derivent les en-tetes Host acceptes.
+	Addr string
 }
 
-// Handler wires the routes.
+// Handler wires the routes behind the session guard: no route is reachable
+// without a valid Host and session token.
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", s.handleIndex)
 	mux.HandleFunc("/api/search", s.handleSearch)
 	mux.HandleFunc("/api/version", s.handleVersion)
-	return mux
+	return guard{token: s.Token, allowed: allowedHosts(s.Addr), next: mux}
 }
 
 func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {

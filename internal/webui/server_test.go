@@ -40,8 +40,20 @@ func (f *fakeSearcher) Search(ctx context.Context, query string, limit, page int
 	return f.repos, f.total, f.rate, f.err
 }
 
+// testToken et testAddr ouvrent une session valide pour les tests de recherche,
+// qui ne portent pas sur la session elle-meme (voir session_test.go).
+const (
+	testToken = "jeton-de-test"
+	testAddr  = "127.0.0.1:7777"
+)
+
 func newServer(f *fakeSearcher) http.Handler {
-	return (&Server{Client: f, Version: "test"}).Handler()
+	h := (&Server{Client: f, Version: "test", Token: testToken, Addr: testAddr}).Handler()
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r.Host = testAddr
+		r.AddCookie(&http.Cookie{Name: sessionCookie, Value: testToken})
+		h.ServeHTTP(w, r)
+	})
 }
 
 // quick appends the parameter that keeps a test to a single API call, so that
