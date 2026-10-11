@@ -46,7 +46,9 @@ func runAudit(phrase string, limit int, jsonPath string) (int, error) {
 		if err != nil {
 			return 2, err
 		}
-		if err := os.WriteFile(jsonPath, append(data, '\n'), 0o644); err != nil {
+		// 0600: le rapport porte des chemins locaux et, pour -scan, le detail des
+		// failles du code analyse. Il n'a pas a etre lisible par les autres comptes.
+		if err := os.WriteFile(jsonPath, append(data, '\n'), 0o600); err != nil {
 			return 2, err
 		}
 		fmt.Fprintf(os.Stderr, "rapport ecrit dans %s\n", jsonPath)

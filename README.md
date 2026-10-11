@@ -200,6 +200,12 @@ et `~/.local/bin` pour pip hors Windows. Un moteur introuvable laisse un
 constat d'information qui dit où il a été cherché, plutôt que de disparaître
 du rapport.
 
+Deux moteurs qui signalent la même vulnérabilité connue, reconnue à un
+identifiant partagé (OSV, CVE ou GHSA), ne font qu'un constat. Le plus
+informatif est gardé, govulncheck en tête puisqu'il sait si le code fautif
+est appelé, et chaque constat dit quels moteurs l'ont trouvé. Le rapport
+indique combien de doublons ont été fusionnés.
+
 Chaque constat sort en statut `review` et `declared=false`. L'analyse statique
 produit des **candidats**, pas des verdicts: confirmer une faille se fait sur
 une instance locale montée soi-même, et la déclarer passe par une divulgation

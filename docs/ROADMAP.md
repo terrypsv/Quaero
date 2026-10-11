@@ -35,6 +35,9 @@ lecture: Quaero analyse, il n'exploite rien.
       quand un `go.mod` est présent
 - [x] Moteurs retrouvés hors du `PATH` (GOBIN, GOPATH/bin, ~/go/bin,
       ~/.local/bin), le message d'absence dit où ils ont été cherchés
+- [x] Fusion des doublons entre moteurs, reconnus à un identifiant public
+      partagé (OSV, CVE, GHSA). Le constat le plus informatif reste, la
+      provenance garde tous les moteurs d'accord
 - [x] Tout constat en `review`, `declared=false`: l'outil trie des candidats,
       il ne confirme ni ne déclare rien
 - [ ] Vue web des constats de code, à côté du verdict de santé

@@ -19,6 +19,10 @@ jobs:
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version-file: go.mod
+          # Comme tests.yml: le dernier correctif de la version declaree. Sans
+          # cela, le binaire publie peut etre compile avec un Go plus ancien,
+          # garde en cache sur le runner, et embarquer ses failles corrigees depuis.
+          check-latest: true
           cache: true
 
       - name: coherence version et tag

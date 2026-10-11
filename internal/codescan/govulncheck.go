@@ -50,6 +50,8 @@ func (g Govulncheck) Scan(ctx context.Context, dir string) ([]finding.Finding, e
 	if err != nil {
 		return nil, err
 	}
+	// #nosec G204 -- aucun shell: binaire resolu depuis un nom fixe, arguments
+	// separes, et le chemin analyse est absolu (absDir), jamais lu comme une option.
 	cmd := exec.CommandContext(ctx, bin, "-json", "-C", dir, "./...")
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout

@@ -55,6 +55,8 @@ func (s Semgrep) Scan(ctx context.Context, dir string) ([]finding.Finding, error
 	if err != nil {
 		return nil, err
 	}
+	// #nosec G204 -- aucun shell: binaire resolu depuis un nom fixe, arguments
+	// separes, et le chemin analyse est absolu (absDir), jamais lu comme une option.
 	cmd := exec.CommandContext(ctx, bin,
 		"--config", s.config(), "--json", "--quiet", dir)
 	var stdout, stderr bytes.Buffer

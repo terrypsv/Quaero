@@ -1,0 +1,130 @@
+// Copyright (c) 2026 Terry Passave. All rights reserved.
+// Proprietary and confidential. Unauthorized use is prohibited.
+
+package codescan
+
+import "github.com/terrypsv/Quaero/internal/finding"
+
+// EvidenceEngine est le type de preuve qui nomme le moteur ayant produit un
+// constat. Un constat fusionne en porte un par moteur d'accord.
+const EvidenceEngine = "engine"
+
+// enginePriority departage deux constats de meme gravite sur la meme
+// vulnerabilite. govulncheck passe devant: lui seul sait si le code fautif est
+// reellement appele, ce qu'osv-scanner ne mesure pas.
+var enginePriority = map[string]int{
+	"govulncheck": 3,
+	"gosec":       2,
+	"semgrep":     2,
+	"osv-scanner": 1,
+}
+
+// dedupe regroupe les constats qui decrivent la meme vulnerabilite connue,
+// reconnue a un identifiant public partage (OSV, CVE ou GHSA). Deux moteurs qui
+// tombent d'accord ne font pas deux failles: on garde le constat le plus
+// informatif, et l'autre moteur s'ajoute a sa provenance.
+//
+// Les constats sans identifiant public (motifs de code, constats d'absence) ne
+// sont jamais fusionnes. Partager une CWE ne suffit pas: deux injections au
+// meme CWE dans deux fichiers restent deux constats.
+func dedupe(fs []finding.Finding) []finding.Finding {
+	var kept []finding.Finding
+	index := map[string]int{} // identifiant public -> position dans kept
+
+	for _, f := range fs {
+		ids := publicIDs(f)
+		pos := -1
+		for _, id := range ids {
+			if p, ok := index[id]; ok {
+				pos = p
+				break
+			}
+		}
+
+		if pos < 0 {
+			kept = append(kept, f)
+			pos = len(kept) - 1
+		} else if better(f, kept[pos]) {
+			f.Evidence = mergeEngines(f.Evidence, kept[pos].Evidence)
+			kept[pos] = f
+		} else {
+			kept[pos].Evidence = mergeEngines(kept[pos].Evidence, f.Evidence)
+		}
+
+		// Tous les identifiants des deux constats pointent vers le survivant,
+		// pour qu'un troisieme moteur reconnu par un seul alias le rejoigne.
+		for _, id := range ids {
+			index[id] = pos
+		}
+		for _, id := range publicIDs(kept[pos]) {
+			index[id] = pos
+		}
+	}
+	return kept
+}
+
+// publicIDs rend les identifiants qui designent une vulnerabilite publiee.
+func publicIDs(f finding.Finding) []string {
+	var ids []string
+	for _, r := range f.References {
+		switch r.Framework {
+		case "OSV", "CVE", "GHSA":
+			if r.ID != "" {
+				ids = append(ids, r.ID)
+			}
+		}
+	}
+	return ids
+}
+
+// better dit si a doit remplacer b: la gravite d'abord, puis le moteur le plus
+// informatif.
+func better(a, b finding.Finding) bool {
+	if sa, sb := severityRank(a.Severity), severityRank(b.Severity); sa != sb {
+		return sa > sb
+	}
+	return engineRank(a) > engineRank(b)
+}
+
+func severityRank(s finding.Severity) int {
+	switch s {
+	case finding.SeverityCritical:
+		return 4
+	case finding.SeverityHigh:
+		return 3
+	case finding.SeverityMedium:
+		return 2
+	case finding.SeverityLow:
+		return 1
+	default:
+		return 0
+	}
+}
+
+// engineRank rend la meilleure priorite parmi les moteurs cites en preuve.
+func engineRank(f finding.Finding) int {
+	best := 0
+	for _, e := range f.Evidence {
+		if e.Type == EvidenceEngine && enginePriority[e.Data] > best {
+			best = enginePriority[e.Data]
+		}
+	}
+	return best
+}
+
+// mergeEngines ajoute a dst les preuves de moteur de src qu'il n'a pas deja.
+func mergeEngines(dst, src []finding.Evidence) []finding.Evidence {
+	have := map[string]bool{}
+	for _, e := range dst {
+		if e.Type == EvidenceEngine {
+			have[e.Data] = true
+		}
+	}
+	for _, e := range src {
+		if e.Type == EvidenceEngine && !have[e.Data] {
+			dst = append(dst, e)
+			have[e.Data] = true
+		}
+	}
+	return dst
+}
