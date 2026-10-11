@@ -65,6 +65,7 @@ func Run(ctx context.Context, dir, version string, scanners ...Scanner) (*findin
 	)
 
 	ran := []string{}
+	var found []finding.Finding
 	for _, s := range scanners {
 		if !s.Available() {
 			rep.Add(unavailable(s.Name()))
@@ -81,10 +82,21 @@ func Run(ctx context.Context, dir, version string, scanners ...Scanner) (*findin
 			// declare. La confirmation et la declaration sont des actes humains,
 			// posterieurs et hors de l'outil.
 			f.Declared = finding.Bool(false)
-			rep.Add(f)
+			// La provenance est gardee: c'est elle qui permet de fusionner deux
+			// moteurs d'accord sans perdre qu'ils l'etaient.
+			f.Evidence = append(f.Evidence, finding.Evidence{Type: EvidenceEngine, Data: s.Name()})
+			found = append(found, f)
 		}
 	}
+
+	kept := dedupe(found)
+	for _, f := range kept {
+		rep.Add(f)
+	}
 	rep.Run.Context["scanners"] = ran
+	// Une fusion silencieuse serait un mensonge par omission: le rapport dit
+	// combien de constats en double ont ete regroupes.
+	rep.Run.Context["doublons_fusionnes"] = len(found) - len(kept)
 
 	rep.Finish()
 	return rep, nil

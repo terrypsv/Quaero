@@ -74,6 +74,8 @@ func LoadToken() string {
 	if err != nil {
 		return ""
 	}
+	// #nosec G304 -- chemin fixe du fichier de configuration (ConfigPath), sous le
+	// dossier utilisateur, jamais issu d'une entree externe.
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return ""

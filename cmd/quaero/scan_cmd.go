@@ -56,7 +56,11 @@ func runScan(dir, jsonPath string) (int, error) {
 		fmt.Printf("[%-8s %-6s] %-40s %s\n",
 			strings.ToUpper(string(f.Severity)), string(f.Status), f.ID, f.Title)
 	}
-	fmt.Printf("\n%d constat(s): %d fail, %d review\n", len(rep.Findings), fail, review)
+	fmt.Printf("\n%d constat(s): %d fail, %d review", len(rep.Findings), fail, review)
+	if merged, _ := rep.Run.Context["doublons_fusionnes"].(int); merged > 0 {
+		fmt.Printf(", %d doublon(s) entre moteurs fusionne(s)", merged)
+	}
+	fmt.Println()
 	fmt.Println("Tous les constats sont a verifier manuellement avant toute declaration.")
 
 	if jsonPath != "" {
@@ -64,7 +68,9 @@ func runScan(dir, jsonPath string) (int, error) {
 		if err != nil {
 			return 2, err
 		}
-		if err := os.WriteFile(jsonPath, append(data, '\n'), 0o644); err != nil {
+		// 0600: le rapport porte des chemins locaux et, pour -scan, le detail des
+		// failles du code analyse. Il n'a pas a etre lisible par les autres comptes.
+		if err := os.WriteFile(jsonPath, append(data, '\n'), 0o600); err != nil {
 			return 2, err
 		}
 		fmt.Fprintf(os.Stderr, "rapport ecrit dans %s\n", jsonPath)
