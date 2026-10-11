@@ -36,12 +36,14 @@ jobs:
         os: [ubuntu-latest, macos-latest, windows-latest]
 
     steps:
-      - uses: actions/checkout@v4
+      # Actions epinglees par empreinte, comme release.yml: une etiquette peut
+      # etre deplacee vers un autre code sans que rien ne change ici.
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
       # La version vient du module, pas d'une constante recopiee dans le
       # workflow. Une CI qui compile avec un Go different de celui declare
       # verifie autre chose que ce qui sera publie.
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version-file: go.mod
           check-latest: true

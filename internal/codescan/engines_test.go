@@ -31,6 +31,16 @@ func TestParseSemgrepCWEString(t *testing.T) {
 	if !hasRef(f.References, "CWE", "CWE-95") {
 		t.Error("reference CWE-95 manquante")
 	}
+	// L'identifiant complet reste disponible pour une annotation nosemgrep.
+	full := false
+	for _, e := range f.Evidence {
+		if e.Type == "rule" && e.Data == "python.lang.security.audit.dangerous-exec" {
+			full = true
+		}
+	}
+	if !full {
+		t.Error("identifiant complet de la regle absent des preuves")
+	}
 }
 
 func TestParseSemgrepCWEList(t *testing.T) {

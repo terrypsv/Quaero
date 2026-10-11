@@ -73,6 +73,9 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	// The page holds no secret and is served from memory; caching it would
 	// only make a version change confusing during development.
 	w.Header().Set("Cache-Control", "no-store")
+	// La page est embarquee dans le binaire (go:embed): aucune donnee venue de
+	// l'exterieur n'y passe, il n'y a rien a echapper.
+	// nosemgrep: go.lang.security.audit.xss.no-direct-write-to-responsewriter.no-direct-write-to-responsewriter
 	_, _ = w.Write(indexHTML)
 }
 

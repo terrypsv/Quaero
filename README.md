@@ -216,6 +216,12 @@ selon ses propres règles: un moteur en panne, ou osv-scanner qui ne trouve
 aucun manifeste à vérifier, ne ressort jamais comme un dépôt sain. Le résumé
 affiche la durée de chaque moteur.
 
+Un faux positif se documente dans le code, à côté de la ligne concernée.
+semgrep ignore les annotations `#nosec` de gosec: il attend
+`// nosemgrep: <identifiant complet de la règle>` sur la ligne précédente.
+L'identifiant complet figure dans chaque constat semgrep, en preuve de type
+`rule`.
+
 Deux moteurs qui signalent la même vulnérabilité connue, reconnue à un
 identifiant partagé (OSV, CVE ou GHSA), ne font qu'un constat. Le plus
 informatif est gardé, govulncheck en tête puisqu'il sait si le code fautif

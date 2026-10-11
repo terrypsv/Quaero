@@ -152,6 +152,11 @@ func projectSemgrep(r semgrepResult) finding.Finding {
 		out.Evidence = append(out.Evidence, finding.Evidence{Type: "code", Data: code})
 	}
 	out.Evidence = append(out.Evidence, finding.Evidence{Type: "location", Data: loc})
+	// L'identifiant complet de la regle est celui qu'attend une annotation
+	// nosemgrep: le titre n'en garde que la fin, lisible mais insuffisant.
+	if r.CheckID != "" {
+		out.Evidence = append(out.Evidence, finding.Evidence{Type: "rule", Data: r.CheckID})
+	}
 	for _, cwe := range cweList(r.Extra.Metadata.CWE) {
 		out.References = append(out.References, finding.Reference{Framework: "CWE", ID: cwe})
 	}

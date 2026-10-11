@@ -33,8 +33,11 @@ type toolResult struct {
 // pour dire qu'ils ont trouve quelque chose. Il n'echoue que si le processus n'a
 // pas pu demarrer ou s'il a ete interrompu.
 func runTool(ctx context.Context, bin, dir string, args ...string) (toolResult, error) {
-	// #nosec G204 -- aucun shell: binaire resolu depuis un nom fixe, arguments
-	// separes, et le chemin analyse est absolu (absDir), jamais lu comme une option.
+	// Aucun shell: binaire resolu depuis un nom fixe, arguments separes, et le
+	// chemin analyse est absolu (absDir), jamais lu comme une option. gosec et
+	// semgrep signalent quand meme cet appel, d'ou les deux annotations.
+	// #nosec G204 -- justification ci-dessus
+	// nosemgrep: go.lang.security.audit.dangerous-exec-command.dangerous-exec-command
 	cmd := exec.CommandContext(ctx, bin, args...)
 	cmd.Dir = dir
 	cmd.WaitDelay = waitDelay
