@@ -203,18 +203,24 @@
   .plus-corps { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; background: var(--blanc); border: 1px solid var(--trait); font-size: 13px; }
   .plus-corps p { margin: 0; }
 
-  .pagination { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 12px; padding-top: 20px; color: var(--gris); font-size: 13px; }
+  .pagination { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 12px; padding-top: 20px; color: var(--gris); font-size: 13px; font-variant-numeric: tabular-nums; }
+  .pagination .suite { border-color: var(--encre); background: var(--encre); color: var(--acide); }
+  .pagination .suite:hover { background: var(--encre); color: var(--papier); }
+  .pagination .cout { color: var(--pale); }
+  .reglages { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
 
   .pied { flex-shrink: 0; background: var(--encre); color: var(--papier); border-top: 6px solid var(--acide); }
   .pied-in {
     max-width: 960px; margin: 0 auto; padding: 20px;
-    display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 32px; font-size: 13px;
+    display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 32px; font-size: 13px;
   }
   .pied-marque { display: inline-flex; align-items: center; gap: 10px; }
   .pied-marque .mot { font-size: 20px; color: var(--papier); }
   .pied-marque .version { color: var(--pale); font-variant-numeric: tabular-nums; }
   .pied p { margin: 0; }
-  .pied .note-pied { flex: 1 1 320px; min-width: 0; color: var(--trait); }
+  /* La note tient sur une ligne a elle seule; elle ne revient a la ligne que
+     sur un ecran trop etroit pour la contenir. */
+  .pied .note-pied { flex: 1 0 100%; color: var(--trait); white-space: nowrap; }
   .pied .droits { color: var(--pale); }
 
   @media (max-width: 600px) {
@@ -224,6 +230,7 @@
     .ligne { grid-template-columns: 1fr; }
     .opt { grid-template-columns: 1fr; }
     .opt .aide { grid-column: 1; }
+    .pied .note-pied { white-space: normal; }
   }
   @media (prefers-reduced-motion: reduce) {
     .attente::after { animation: none; }
@@ -274,8 +281,8 @@
       <span class="mot">quaero</span>
       <span class="version" id="version"></span>
     </div>
-    <p class="note-pied">Forks et dépôts archivés écartés par défaut. Écris « y compris les forks » pour les garder.</p>
     <p class="droits">Terry Passave &copy; 2026. Tous droits réservés.</p>
+    <p class="note-pied">Forks et dépôts archivés écartés par défaut. Écris « y compris les forks » pour les garder.</p>
   </div>
 </footer>
 
@@ -457,12 +464,28 @@ function quoteList(words) {
   return q.slice(0, -1).join(", ") + " et " + q[q.length - 1];
 }
 
+// Combien de depots par page: 5, 20, 50, 100, ou 0 pour tous ceux charges.
+// Le choix est garde dans ce navigateur, c'est une preference de lecture.
+var PER_PAGE = [[5, "5"], [20, "20"], [50, "50"], [100, "100"], [0, "tous"]];
+
+function savedPerPage() {
+  try {
+    var v = parseInt(localStorage.getItem("quaero.parPage"), 10);
+    for (var i = 0; i < PER_PAGE.length; i++) if (PER_PAGE[i][0] === v) return v;
+  } catch (e) { /* stockage indisponible: valeur par defaut */ }
+  return 20;
+}
+
+function savePerPage(v) {
+  try { localStorage.setItem("quaero.parPage", String(v)); } catch (e) { /* sans effet */ }
+}
+
 function noFilters() {
   return { language: "", topics: [], min_stars: 0, pushed_within_days: 0, license: "", owner: "", no_lists: false };
 }
 
 var state = {
-  sort: "pertinence", page: 1, lang: "toutes", searched: "",
+  sort: "pertinence", upto: 1, view: 1, perPage: savedPerPage(), lang: "toutes", searched: "",
   scope: "anglais", precision: "approfondie", data: null,
   filters: noFilters(), quota: null
 };
@@ -508,7 +531,7 @@ function renderSuggestions() {
     b.type = "button";
     b.className = "idee";
     b.textContent = text;
-    b.onclick = function () { $("q").value = text; run({ page: 1, fresh: true }); };
+    b.onclick = function () { $("q").value = text; run({ fresh: true }); };
     box.appendChild(b);
   });
   var r = document.createElement("button");
@@ -550,7 +573,7 @@ function setOption(o) {
   if (o.precision) state.precision = o.precision;
   renderOptions();
   drawQuota();
-  if ($("q").value.trim() === state.searched && state.searched) run({ page: 1 });
+  if ($("q").value.trim() === state.searched && state.searched) run({});
   else preview();
 }
 
@@ -614,9 +637,9 @@ function drawQuota() {
 function init() {
   renderSuggestions();
   renderOptions();
-  $("go").onclick = function () { run({ page: 1, fresh: true }); };
+  $("go").onclick = function () { run({ fresh: true }); };
   $("q").addEventListener("keydown", function (e) {
-    if (e.key === "Enter") run({ page: 1, fresh: true });
+    if (e.key === "Enter") run({ fresh: true });
   });
   $("q").addEventListener("input", schedulePreview);
   fetch("/api/version").then(function (r) { return r.json(); })
@@ -668,15 +691,19 @@ function preview() {
 }
 
 // Une nouvelle question repart sans les criteres ajoutes a la precedente.
-// Changer de tri, de page ou d'option garde la question et ses criteres.
+// Changer de tri ou d'option garde la question et ses criteres. Le tri garde
+// aussi tout ce qui a ete charge: les pages reviennent du cache du serveur.
+// "Charger la suite" demande une page GitHub de plus par formulation.
 function run(opts) {
   opts = opts || {};
   var phrase = $("q").value.trim();
   if (!phrase) return;
 
   if (opts.fresh) { state.filters = noFilters(); state.lang = "toutes"; }
-  if (opts.page) state.page = opts.page;
-  if (opts.sort) { state.sort = opts.sort; state.page = 1; }
+  if (opts.sort) state.sort = opts.sort;
+  var before = state.data && !opts.fresh ? (state.data.repos || []).length : 0;
+  if (opts.more) state.upto += 1;
+  else if (!opts.sort) state.upto = 1;
 
   $("go").disabled = true;
   $("out").innerHTML = '<p class="attente">recherche en cours</p>';
@@ -685,7 +712,7 @@ function run(opts) {
           + "&sort=" + encodeURIComponent(state.sort)
           + "&scope=" + encodeURIComponent(state.scope)
           + "&precision=" + encodeURIComponent(state.precision)
-          + "&page=" + state.page
+          + "&upto=" + state.upto
           + filterParams(state.filters);
 
   fetch(url)
@@ -707,8 +734,25 @@ function run(opts) {
         min_stars: f.min_stars || 0, pushed_within_days: f.pushed_within_days || 0,
         license: f.license || "", owner: f.owner || "", no_lists: !!f.no_lists
       };
+      // La suite s'ajoute apres ce qui a deja ete vu: le serveur classe toute
+      // la liste, mais un depot deja lu ne doit pas changer de page sous les
+      // yeux. Les depots deja affiches gardent leur ordre, les nouveaux
+      // suivent dans l'ordre du classement.
+      if (opts.more && state.data) {
+        var fresh = {}, kept = {}, ordered = [];
+        (data.repos || []).forEach(function (r) { fresh[r.full_name] = r; });
+        (state.data.repos || []).forEach(function (r) {
+          if (fresh[r.full_name]) { ordered.push(fresh[r.full_name]); kept[r.full_name] = true; }
+        });
+        (data.repos || []).forEach(function (r) { if (!kept[r.full_name]) ordered.push(r); });
+        data.repos = ordered;
+      }
       state.data = data;
+      state.upto = data.page || 1;
+      // Apres la suite, on ouvre la page ou commencent les nouveaux depots.
+      state.view = opts.more && state.perPage ? Math.floor(before / state.perPage) + 1 : 1;
       render();
+      if (opts.more) $("out").scrollIntoView({ block: "start" });
     })
     .catch(function (err) {
       $("out").innerHTML = '<p class="erreur"><b>erreur réseau</b>' + esc(String(err)) + "</p>";
@@ -725,7 +769,7 @@ function addFilter(kind, value) {
   if (kind === "license") f.license = value;
   if (kind === "owner") f.owner = value;
   if (kind === "lists") f.no_lists = true;
-  run({ page: 1 });
+  run({});
 }
 
 function removeFilter(kind, value) {
@@ -737,7 +781,7 @@ function removeFilter(kind, value) {
   if (kind === "license") f.license = "";
   if (kind === "owner") f.owner = "";
   if (kind === "lists") f.no_lists = false;
-  run({ page: 1 });
+  run({});
 }
 
 // reading dit ce que la lecture de la phrase a donne: les criteres, puis les
@@ -927,12 +971,16 @@ function render() {
 
   var total = data.total || 0;
   var h = '<div class="bandeau"><h2>' + fmt(total) + (total > 1 ? " dépôts" : " dépôt")
-        + "<small>" + shown.length + (shown.length > 1 ? " affichés" : " affiché") + "</small></h2>";
-  h += '<label class="tri">trier <select id="tri">';
+        + "<small>" + repos.length + (repos.length > 1 ? " chargés" : " chargé") + "</small></h2>";
+  h += '<div class="reglages"><label class="tri">trier <select id="tri">';
   SORTS.forEach(function (s) {
     h += '<option value="' + s[0] + '"' + (state.sort === s[0] ? " selected" : "") + ">" + esc(s[1]) + "</option>";
   });
-  h += "</select></label></div>";
+  h += '</select></label><label class="tri">afficher <select id="par-page">';
+  PER_PAGE.forEach(function (p) {
+    h += '<option value="' + p[0] + '"' + (state.perPage === p[0] ? " selected" : "") + ">" + esc(p[1]) + "</option>";
+  });
+  h += "</select></label></div></div>";
 
   // Tant que tout n'est pas charge, il y a de quoi resserrer.
   if (total > repos.length) h += refineBlock(data, repos);
@@ -953,15 +1001,21 @@ function render() {
 
   if (data.note) h += '<p class="note">' + esc(data.note) + "</p>";
 
-  var offset = ((data.page || 1) - 1) * 50;
+  // La page affichee decoupe la liste chargee, sans rien redemander a GitHub.
+  var per = state.perPage || shown.length || 1;
+  var views = Math.max(1, Math.ceil(shown.length / per));
+  state.view = Math.min(Math.max(1, state.view), views);
+  var from = (state.view - 1) * per;
+  var slice = shown.slice(from, from + per);
+
   h += '<ol class="liste">';
-  repos.forEach(function (r, i) {
+  slice.forEach(function (r) {
     // Le rang reste celui du classement, meme quand un filtre masque des depots.
-    if (shown.indexOf(r) >= 0) h += card(r, offset + i + 1);
+    h += card(r, repos.indexOf(r) + 1);
   });
   h += "</ol>";
 
-  h += pager(data);
+  h += pager(data, shown.length, from, slice.length, views);
   $("out").innerHTML = h;
 
   $("tri").onchange = function () { run({ sort: this.value }); };
@@ -969,8 +1023,19 @@ function render() {
     var parts = b.getAttribute("data-add").split("|");
     addFilter(parts[0], parts.slice(1).join("|"));
   });
-  bind("#out [data-lang]", function (b) { state.lang = b.getAttribute("data-lang"); render(); });
-  bind("#out [data-page]", function (b) { run({ page: parseInt(b.getAttribute("data-page"), 10) }); });
+  $("par-page").onchange = function () {
+    state.perPage = parseInt(this.value, 10);
+    savePerPage(state.perPage);
+    state.view = 1;
+    render();
+  };
+  bind("#out [data-lang]", function (b) { state.lang = b.getAttribute("data-lang"); state.view = 1; render(); });
+  bind("#out [data-view]", function (b) {
+    state.view = parseInt(b.getAttribute("data-view"), 10);
+    render();
+    $("out").scrollIntoView({ block: "start" });
+  });
+  bind("#out [data-more]", function () { run({ more: true }); });
 }
 
 function btn(attr, value, text, active, n) {
@@ -987,14 +1052,20 @@ function bind(selector, fn) {
   }
 }
 
-function pager(data) {
-  var pages = data.pages || 1;
-  var cur = data.page || 1;
-  if (pages <= 1) return "";
+// pager parcourt la liste chargee, puis propose d'en charger la suite chez
+// GitHub, en disant ce que ca coute dans le quota.
+function pager(data, count, from, size, views) {
+  var more = (data.page || 1) < (data.pages || 1);
+  if (views <= 1 && !more) return "";
   var h = '<nav class="pagination" aria-label="Pages">';
-  if (cur > 1) h += '<button type="button" class="choix" data-page="' + (cur - 1) + '">précédent</button>';
-  h += "<span>page " + cur + " sur " + pages + "</span>";
-  if (cur < pages) h += '<button type="button" class="choix" data-page="' + (cur + 1) + '">suivant</button>';
+  if (state.view > 1) h += '<button type="button" class="choix" data-view="' + (state.view - 1) + '">précédent</button>';
+  if (count) h += "<span>" + (from + 1) + " à " + (from + size) + " sur " + count + "</span>";
+  if (state.view < views) h += '<button type="button" class="choix" data-view="' + (state.view + 1) + '">suivant</button>';
+  if (state.view >= views && more) {
+    var cost = data.next_cost || 1;
+    h += '<button type="button" class="choix suite" data-more="1">charger la suite</button>'
+       + '<span class="cout">' + cost + (cost > 1 ? " requêtes" : " requête") + " du quota</span>";
+  }
   return h + "</nav>";
 }
 

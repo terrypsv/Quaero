@@ -6,6 +6,7 @@ package webui
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -85,9 +86,19 @@ func TestCacheEpargneLeQuota(t *testing.T) {
 	if f.calls != first {
 		t.Errorf("changer de tri a coute %d appel(s)", f.calls-first)
 	}
-	search(t, h, "/api/search?q=parser+yaml&page=2")
-	if f.calls == first {
-		t.Error("une autre page doit etre demandee a GitHub")
+	// Une page complete appelle la suivante: "charger la suite" la demande,
+	// et seulement elle.
+	f.repos = make([]model.Repo, pageSize)
+	for i := range f.repos {
+		f.repos[i] = model.Repo{FullName: fmt.Sprintf("a/r%d", i), Name: fmt.Sprintf("r%d", i)}
+	}
+	f.total = 5000
+	h = newServer(f)
+	search(t, h, "/api/search?q=parser+yaml")
+	before := f.calls
+	search(t, h, "/api/search?q=parser+yaml&upto=2")
+	if f.calls == before {
+		t.Error("la page suivante doit etre demandee a GitHub")
 	}
 }
 

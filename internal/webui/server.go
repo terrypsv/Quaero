@@ -50,6 +50,10 @@ const (
 	scopeWide    = "elargi"
 )
 
+// pageSize is the number of repositories asked of GitHub per formulation and
+// per page, the most the API hands out at once.
+const pageSize = 100
+
 // Precision modes. Deep is the default: the extra API calls buy agreement
 // between independent formulations, which is the difference between a list
 // that contains the answer somewhere and a list that starts with it.
@@ -313,18 +317,27 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	limit := 50
+	// Cent depots par formulation: c'est le maximum d'une page GitHub, et il
+	// coute la meme requete que cinquante. La page affiche ensuite ce qu'on
+	// lui demande (5, 20, 50, 100 ou tout), sans rien redemander.
+	limit := pageSize
 	if raw := r.URL.Query().Get("limit"); raw != "" {
-		if n, err := strconv.Atoi(raw); err == nil && n > 0 {
+		if n, err := strconv.Atoi(raw); err == nil && n > 0 && n < limit {
 			limit = n
 		}
 	}
 
-	page := 1
-	if raw := r.URL.Query().Get("page"); raw != "" {
+	// upto dit combien de pages GitHub de chaque formulation sont fusionnees.
+	// "Charger la suite" demande une page de plus, les precedentes reviennent
+	// du cache, et toute la liste est classee d'un seul tenant.
+	upto := 1
+	if raw := r.URL.Query().Get("upto"); raw != "" {
 		if n, err := strconv.Atoi(raw); err == nil && n > 0 {
-			page = n
+			upto = n
 		}
+	}
+	if most := github.MaxReachable(math.MaxInt32) / limit; upto > most {
+		upto = most
 	}
 
 	mode := r.URL.Query().Get("sort")
@@ -366,35 +379,50 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 	var rate github.RateLimit
 	var err error
 
+	failed := false
 	for _, st := range strategies {
-		stRepos, stTotal, stRate, stErr := s.cache.search(ctx, s.Client, st.Query, limit, page)
-		rate = stRate
-		if stErr != nil {
-			// The first failure is fatal; a later one just stops the widening,
-			// because partial results are still results.
-			if len(queries) == 0 {
-				err = stErr
+		for p := 1; p <= upto; p++ {
+			stRepos, stTotal, stRate, stErr := s.cache.search(ctx, s.Client, st.Query, limit, p)
+			rate = stRate
+			if stErr != nil {
+				// The first failure is fatal; a later one just stops the
+				// search, because partial results are still results.
+				if len(queries) == 0 {
+					err = stErr
+				}
+				failed = true
 				break
 			}
-			break
-		}
-		queries = append(queries, st.Query)
-		if stTotal > total {
-			total = stTotal
-		}
-		for i := range stRepos {
-			key := stRepos[i].FullName
-			existing, seen := merged[key]
-			if !seen {
-				copied := stRepos[i]
-				copied.FoundBy = []string{st.Label}
-				copied.Agreement = st.Weight
-				merged[key] = &copied
-				order = append(order, key)
-				continue
+			if p == 1 {
+				queries = append(queries, st.Query)
 			}
-			existing.FoundBy = append(existing.FoundBy, st.Label)
-			existing.Agreement += st.Weight
+			if stTotal > total {
+				total = stTotal
+			}
+			for i := range stRepos {
+				key := stRepos[i].FullName
+				existing, seen := merged[key]
+				if !seen {
+					copied := stRepos[i]
+					copied.FoundBy = []string{st.Label}
+					copied.Agreement = st.Weight
+					merged[key] = &copied
+					order = append(order, key)
+					continue
+				}
+				if p == 1 || !slices.Contains(existing.FoundBy, st.Label) {
+					existing.FoundBy = append(existing.FoundBy, st.Label)
+					existing.Agreement += st.Weight
+				}
+			}
+			// Une page incomplete est la derniere: en demander une autre
+			// couterait une requete pour rien.
+			if len(stRepos) < limit || p*limit >= github.MaxReachable(stTotal) {
+				break
+			}
+		}
+		if failed {
+			break
 		}
 	}
 
@@ -408,7 +436,7 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 	// communities write it. A very large part of GitHub is described in
 	// Chinese, and a meaningful body of work in Russian, Japanese and Spanish;
 	// an English-only search excludes all of it without ever saying so.
-	if err == nil && scope == scopeWide && page == 1 {
+	if err == nil && scope == scopeWide {
 		seen := map[string]bool{}
 		for _, r := range repos {
 			seen[r.FullName] = true
@@ -440,7 +468,7 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 	// "n'existe pas" de "requete trop serree". On desserre alors les
 	// contraintes une a une, et on dit lesquelles.
 	var relaxed []string
-	if err == nil && len(repos) == 0 && page == 1 {
+	if err == nil && len(repos) == 0 && upto == 1 {
 		for _, step := range intent.Ladder(in) {
 			stepRepos, stepTotal, stepRate, stepErr := s.cache.search(ctx, s.Client, step.Query, limit, 1)
 			rate = stepRate
@@ -480,8 +508,9 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 		Repos:     rank.Score(repos, in, mode),
 		Total:     total,
 		Elapsed:   time.Since(started).Round(time.Millisecond).String(),
-		Page:      page,
+		Page:      upto,
 		Pages:     pages,
+		NextCost:  len(strategies),
 		Reachable: reachable,
 		Sort:      mode,
 		Scope:     scope,

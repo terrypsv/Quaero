@@ -169,7 +169,9 @@ type Result struct {
 	Elapsed string `json:"elapsed"`
 	Note    string `json:"note,omitempty"`
 
-	// Page is the 1-based page shown.
+	// Page is the number of GitHub pages of each formulation merged into
+	// Repos. Loading more asks for one more page and ranks the whole list
+	// again, the earlier pages coming back from the cache.
 	Page int `json:"page"`
 	// Pages is how many pages can actually be reached. GitHub stops handing
 	// out results at a thousand, so a search matching eleven thousand
@@ -178,6 +180,8 @@ type Result struct {
 	Pages int `json:"pages"`
 	// Reachable is the number of results that can actually be paged through.
 	Reachable int `json:"reachable"`
+	// NextCost is the number of requests loading one more page would spend.
+	NextCost int `json:"next_cost"`
 	// Sort is the ordering applied.
 	Sort string `json:"sort"`
 
