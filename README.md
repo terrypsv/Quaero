@@ -2,6 +2,8 @@
 
 
 
+
+
 Quaero aide à choisir du code open source et à le rendre plus sûr. Tu décris
 ce que tu cherches avec tes mots, il trouve les dépôts GitHub qui
 correspondent et dit lesquels sont encore entretenus. Il peut ensuite analyser
