@@ -105,7 +105,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "erreur: jeton de session impossible a tirer: %v\n", err)
 		os.Exit(2)
 	}
-	server := &webui.Server{Client: client, Version: version, Addr: *addr, Token: session, Scan: webScan(client.Token)}
+	server := &webui.Server{Client: client, Version: version, Addr: *addr, Token: session, Scan: webScan(client.Token), ScanTimeout: codescan.DefaultTimeout}
 	httpServer := &http.Server{
 		Addr:              *addr,
 		Handler:           server.Handler(),

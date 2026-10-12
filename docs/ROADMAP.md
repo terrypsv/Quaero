@@ -124,6 +124,9 @@ lecture: Quaero analyse, il n'exploite rien.
 - [x] Jeton de session exigé en en-tête pour l'API, le cookie n'ouvrant plus
       que la page. Un autre serveur de 127.0.0.1 qui reçoit le cookie ne peut
       rien en faire
+- [x] Limite d'analyse affichée dans l'onglet audit, à la place du quota
+- [x] Échecs de clone dits en une ligne, un message par cas
+- [x] Logo du README, Quaero avec un Q majuscule, sur fond sombre
 - [ ] Mode hors ligne pour les dépôts dont même la liste des dépendances est
       confidentielle (bases OSV et Go téléchargées à l'avance)
 - [ ] Bac à sable d'exécution pour analyser un dépôt tiers non fiable

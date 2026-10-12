@@ -84,8 +84,28 @@ func cloneEnv(token string) []string {
 // needsAuth dit si git a echoue faute d'identifiants: GitHub repond ainsi en
 // anonyme pour un depot prive comme pour un depot qui n'existe pas.
 func needsAuth(out string) bool {
-	for _, s := range []string{"could not read Username", "terminal prompts disabled", "Authentication failed", "Invalid username or password"} {
-		if strings.Contains(out, s) {
+	return containsAny(out, "could not read Username", "terminal prompts disabled",
+		"Authentication failed", "Invalid username or password", "returned error: 401")
+}
+
+// denied dit si GitHub a refuse l'acces a un depot qu'il connait: un jeton
+// valide, mais sans droit sur ce depot.
+func denied(out string) bool {
+	return containsAny(out, "returned error: 403", "Write access to repository not granted", "Permission to")
+}
+
+func notFound(out string) bool {
+	return containsAny(out, "not found", "returned error: 404")
+}
+
+func unreachable(out string) bool {
+	return containsAny(out, "Could not resolve host", "Failed to connect", "Connection timed out",
+		"Connection refused", "Operation timed out", "Could not connect")
+}
+
+func containsAny(s string, subs ...string) bool {
+	for _, sub := range subs {
+		if strings.Contains(s, sub) {
 			return true
 		}
 	}
@@ -99,7 +119,7 @@ func needsAuth(out string) bool {
 func cloneRepo(ctx context.Context, ref repo.Ref, token string) (string, func(), error) {
 	git, err := exec.LookPath("git")
 	if err != nil {
-		return "", func() {}, fmt.Errorf("git introuvable, l'installer ou cloner a la main puis `-scan <chemin>`")
+		return "", func() {}, &cloneFailure{code: "git_absent", msg: "git introuvable. L'installer, ou analyser un dossier deja clone avec -scan <chemin>"}
 	}
 	return cloneWith(ctx, git, ref, token)
 }
@@ -114,7 +134,7 @@ func cloneWith(ctx context.Context, git string, ref repo.Ref, token string) (str
 
 	out, err := runClone(ctx, git, ref, dir, "")
 	withToken := false
-	if err != nil && needsAuth(out) && token != "" && ctx.Err() == nil {
+	if err != nil && (needsAuth(out) || denied(out)) && token != "" && ctx.Err() == nil {
 		// Un clone rate peut laisser un .git partiel: on repart d'un dossier
 		// vide pour la seconde tentative.
 		if err = resetDir(dir); err == nil {
@@ -137,20 +157,39 @@ func resetDir(dir string) error {
 	return os.Mkdir(dir, 0o700)
 }
 
+// cloneFailure est un echec de clone dit en une ligne, avec un code que
+// l'interface traduit dans ses propres mots.
+type cloneFailure struct {
+	code string
+	msg  string
+}
+
+func (e *cloneFailure) Error() string { return e.msg }
+
+// Code nomme le cas, pour l'interface (voir webui).
+func (e *cloneFailure) Code() string { return e.code }
+
 // cloneError dit pourquoi un clone a echoue, en termes d'action: un depot
-// prive se lit avec un jeton qui y a acces, ou se clone a la main.
+// prive se lit avec un jeton qui y a acces, ou s'analyse par son dossier.
 func cloneError(ref repo.Ref, out string, err error, withToken bool) error {
-	switch {
-	case withToken && needsAuth(out):
-		return fmt.Errorf("jeton refuse par GitHub pour cloner %s: expire, revoque, ou sans acces a ce depot", ref)
-	case withToken && strings.Contains(out, "not found"):
-		return fmt.Errorf("%s introuvable, ou prive et hors de portee du jeton (il doit pouvoir lire le contenu du depot)", ref)
-	case needsAuth(out):
-		return fmt.Errorf("%s introuvable, ou prive. Pour un depot prive, enregistrer un jeton qui peut le lire (quaero -save-token), ou le cloner soi-meme puis analyser le dossier", ref)
-	case out == "":
-		return fmt.Errorf("clone de %s impossible: %v", ref, err)
+	fail := func(code, format string, args ...any) error {
+		return &cloneFailure{code: code, msg: fmt.Sprintf(format, args...)}
 	}
-	return fmt.Errorf("clone de %s impossible: %s", ref, gitFailure(out))
+	switch {
+	case unreachable(out):
+		return fail("reseau", "github.com ne repond pas, verifier la connexion")
+	case withToken && needsAuth(out):
+		return fail("jeton_refuse", "GitHub refuse le jeton (expire ou revoque). Le remplacer avec quaero -save-token")
+	case withToken && denied(out):
+		return fail("jeton_sans_acces", "le jeton n'a pas acces a %s. Lui donner la lecture de ce depot, ou analyser son dossier", ref)
+	case withToken && notFound(out):
+		return fail("introuvable", "%s n'existe pas, ou le jeton ne le voit pas", ref)
+	case needsAuth(out) || denied(out) || notFound(out):
+		return fail("prive", "%s n'existe pas ou est prive. Un depot prive demande un jeton qui peut le lire (quaero -save-token)", ref)
+	case out == "":
+		return fail("clone", "clone de %s impossible (%v)", ref, err)
+	}
+	return fail("clone", "clone de %s impossible. %s", ref, gitFailure(out))
 }
 
 // gitFailure garde de la sortie de git la ligne qui dit l'erreur: la premiere

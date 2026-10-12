@@ -169,7 +169,7 @@ func TestClonePriveAvecJeton(t *testing.T) {
 func TestClonePriveRefuse(t *testing.T) {
 	for _, c := range []struct{ token, want string }{
 		{"", "quaero -save-token"},
-		{"jeton", "hors de portee du jeton"},
+		{"jeton", "le jeton ne le voit pas"},
 	} {
 		git, _ := fakeGit(t, "0", "non")
 		_, _, err := cloneWith(t.Context(), git, ref, c.token)
@@ -211,4 +211,56 @@ func TestGitFailure(t *testing.T) {
 			t.Errorf("gitFailure(%q) = %q, attendu %q", out, got, want)
 		}
 	}
+}
+
+// Chaque cas d'echec a son code et tient sur une ligne.
+func TestCloneErrorParCas(t *testing.T) {
+	cases := []struct {
+		out       string
+		withToken bool
+		code      string
+	}{
+		{"fatal: unable to access 'u': Could not resolve host: github.com", false, "reseau"},
+		{"fatal: could not read Username for 'https://github.com': terminal prompts disabled", false, "prive"},
+		{"fatal: unable to access 'https://github.com/a/b.git/': The requested URL returned error: 403", false, "prive"},
+		{"fatal: unable to access 'https://github.com/a/b.git/': The requested URL returned error: 403", true, "jeton_sans_acces"},
+		{"remote: Write access to repository not granted.\nfatal: unable to access 'u': The requested URL returned error: 403", true, "jeton_sans_acces"},
+		{"remote: Repository not found.\nfatal: repository 'u' not found", true, "introuvable"},
+		{"remote: Invalid username or password.\nfatal: Authentication failed for 'u'", true, "jeton_refuse"},
+		{"Cloning into 'x'...\nfatal: early EOF", false, "clone"},
+	}
+	for _, c := range cases {
+		err := cloneError(ref, c.out, nil, c.withToken)
+		cf, ok := err.(*cloneFailure)
+		if !ok || cf.Code() != c.code {
+			t.Errorf("%q (jeton %v): %v, attendu le code %s", c.out, c.withToken, err, c.code)
+			continue
+		}
+		if strings.Contains(err.Error(), "\n") {
+			t.Errorf("message sur plusieurs lignes: %q", err.Error())
+		}
+	}
+}
+
+// Un refus 403 en anonyme declenche aussi la tentative avec le jeton.
+func TestClone403AnonymeRetenteAvecJeton(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("faux git en script shell")
+	}
+	dir := t.TempDir()
+	git := filepath.Join(dir, "git")
+	script := `#!/bin/sh
+for last; do :; done
+if env | grep -q "^GIT_CONFIG_VALUE_[0-9]*=AUTHORIZATION: basic "; then mkdir -p "$last/.git"; exit 0; fi
+echo "fatal: unable to access 'https://github.com/a/b.git/': The requested URL returned error: 403" >&2
+exit 128
+`
+	if err := os.WriteFile(git, []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	_, cleanup, err := cloneWith(t.Context(), git, ref, "jeton")
+	if err != nil {
+		t.Fatalf("clone avec jeton apres un 403 anonyme: %v", err)
+	}
+	cleanup()
 }
