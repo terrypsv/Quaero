@@ -90,6 +90,9 @@ lecture: Quaero analyse, il n'exploite rien.
 - [x] Premier audit de Quaero par lui-même: trois candidats triés (G101 sur
       des noms de variables, urllib limité à https, SRI sur une icône en
       data: URI), corrigés ou justifiés dans le code
+- [x] `-advisory`: brouillon de signalement privé (forme GitHub Security
+      Advisory) à partir d'un constat, commit analysé noté dans le rapport,
+      liste de contrôle avant envoi, rien n'est envoyé par l'outil
 - [ ] Session locale par jeton (lien du terminal, cookie `HttpOnly`
       `SameSite=Strict`), retirée pendant le développement de l'interface. À
       remettre avant la première version publiée et avant toute route qui
