@@ -157,7 +157,31 @@ func (g guard) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		deny(w, r)
 		return
 	}
+	// Ce qui modifie un etat (lancer, annuler) doit venir de la page elle-meme.
+	// SameSite=Strict ne distingue pas les ports: une page servie sur un autre
+	// port de cette machine est du meme site et le cookie l'accompagne. Son
+	// origine, elle, differe. Le navigateur pose Origin sur tout POST.
+	if !safeMethod(r.Method) && !sameOrigin(r) {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "origine refusee"})
+		return
+	}
 	g.next.ServeHTTP(w, r)
+}
+
+func safeMethod(m string) bool {
+	return m == http.MethodGet || m == http.MethodHead || m == http.MethodOptions
+}
+
+// sameOrigin dit si une requete qui modifie un etat vient de l'interface. Sans
+// en-tete Origin, la requete ne vient pas d'une page (un client en ligne de
+// commande qui a le cookie a deja la session); avec, il doit designer l'hote
+// meme qui repond.
+func sameOrigin(r *http.Request) bool {
+	o := r.Header.Get("Origin")
+	if o == "" {
+		return true
+	}
+	return strings.EqualFold(o, "http://"+r.Host)
 }
 
 // sameToken compare en temps constant, pour ne rien laisser deviner du jeton a

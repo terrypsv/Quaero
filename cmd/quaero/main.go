@@ -6,12 +6,15 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"log"
 	"net"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/terrypsv/Quaero/internal/codescan"
@@ -105,7 +108,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "erreur: jeton de session impossible a tirer: %v\n", err)
 		os.Exit(2)
 	}
-	server := &webui.Server{Client: client, Version: version, Addr: *addr, Token: session}
+	server := &webui.Server{Client: client, Version: version, Addr: *addr, Token: session, Scan: webScan}
 	httpServer := &http.Server{
 		Addr:              *addr,
 		Handler:           server.Handler(),
@@ -135,6 +138,22 @@ func main() {
 		fmt.Fprintf(os.Stderr, "navigateur non ouvert (%v). Ouvrir la session: %s\n", err, url)
 	}
 	fmt.Println("Ctrl+C pour arreter.")
+
+	// Ctrl+C arrete d'abord l'analyse en cours, le temps qu'elle efface son
+	// clone: quitter sans cela laisserait du code tiers dans le temporaire.
+	stop, release := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer release()
+	go func() {
+		<-stop.Done()
+		// Un second Ctrl+C quitte tout de suite, sans attendre le nettoyage.
+		release()
+		if stopped, finished := server.StopScan(10 * time.Second); stopped && finished {
+			fmt.Println("analyse en cours interrompue")
+		} else if stopped {
+			fmt.Fprintf(os.Stderr, "analyse interrompue sans avoir fini, un clone quaero-scan-* peut rester dans %s\n", os.TempDir())
+		}
+		_ = httpServer.Close()
+	}()
 	if err := httpServer.Serve(listener); err != nil && err != http.ErrServerClosed {
 		log.Fatalf("serveur: %v", err)
 	}

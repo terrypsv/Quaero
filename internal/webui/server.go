@@ -84,8 +84,12 @@ type Server struct {
 	// Token est le jeton de session de cette execution (voir guard.go). Vide,
 	// l'interface refuse tout.
 	Token string
+	// Scan analyse un depot depuis l'onglet audit (voir scan.go). Nil, l'onglet
+	// dit que l'analyse n'est pas disponible.
+	Scan ScanFunc
 
 	cache *searchCache
+	scans *scanJobs
 }
 
 // Pages are kept ten minutes: long enough to re-sort, page back and forth or
@@ -102,12 +106,18 @@ func (s *Server) Handler() http.Handler {
 	if s.cache == nil {
 		s.cache = newSearchCache(cacheTTL, cachePages)
 	}
+	if s.scans == nil {
+		s.scans = &scanJobs{}
+	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", s.handleIndex)
 	mux.HandleFunc("/api/search", s.handleSearch)
 	mux.HandleFunc("/api/read", s.handleRead)
 	mux.HandleFunc("/api/quota", s.handleQuota)
 	mux.HandleFunc("/api/version", s.handleVersion)
+	mux.HandleFunc("/api/scan", s.handleScan)
+	mux.HandleFunc("/api/scan/cancel", s.handleScanCancel)
+	mux.HandleFunc("/api/scan/advisory", s.handleScanAdvisory)
 	mux.HandleFunc("/fonts/", s.handleFont)
 	return guard{token: s.Token, allowed: allowedHosts(s.Addr), next: mux}
 }

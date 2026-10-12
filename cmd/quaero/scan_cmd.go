@@ -6,14 +6,18 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"sort"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/terrypsv/Quaero/internal/codescan"
+	"github.com/terrypsv/Quaero/internal/repo"
 )
 
 // resolveScanTarget transforme ce qui est passe a -scan en un dossier a
@@ -31,7 +35,7 @@ func resolveScanTarget(ctx context.Context, target string) (dir, label string, u
 		}
 		return target, label, false, func() {}, nil
 	}
-	ref, ok := parseRepoRef(target)
+	ref, ok := repo.Parse(target)
 	if !ok {
 		return "", "", false, func() {}, fmt.Errorf(
 			"%q n'est ni un dossier local ni une reference de depot GitHub (owner/repo ou une URL github.com)", target)
@@ -70,15 +74,31 @@ func selectScanners(dir string) []codescan.Scanner {
 // confirmes. Confirmer une faille et la divulguer de facon coordonnee reste un
 // acte humain, hors de l'outil.
 func runScan(target, jsonPath string, timeout time.Duration) (int, error) {
-	ctx := context.Background()
+	// Ctrl+C arrete les moteurs puis laisse le nettoyage se faire: sans cela,
+	// le processus s'arreterait net et le clone resterait dans le temporaire.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	// Apres le premier Ctrl+C, le second quitte tout de suite.
+	go func() {
+		<-ctx.Done()
+		stop()
+	}()
 	dir, label, untrusted, cleanup, err := resolveScanTarget(ctx, target)
 	if err != nil {
+		if ctx.Err() != nil {
+			return 2, errInterrupted
+		}
 		return 2, err
 	}
 	defer cleanup()
 
 	opt := codescan.Options{Timeout: timeout, Untrusted: untrusted}
 	rep, err := codescan.RunWith(ctx, dir, version, opt, selectScanners(dir)...)
+	if ctx.Err() != nil {
+		// Un scan interrompu ne rend pas de rapport: des moteurs coupes en
+		// route passeraient pour un depot verifie.
+		return 2, errInterrupted
+	}
 	if err != nil {
 		return 2, err
 	}
@@ -134,6 +154,8 @@ func runScan(target, jsonPath string, timeout time.Duration) (int, error) {
 	}
 	return 0, nil
 }
+
+var errInterrupted = errors.New("scan interrompu, aucun rapport ecrit")
 
 // durationsLine resume le temps passe par chaque moteur, pour voir ou part la
 // duree d'un scan. Vide si aucun moteur n'a tourne.
