@@ -98,10 +98,19 @@ lecture: Quaero analyse, il n'exploite rien.
       lance lui-même: plus aucun lien à copier
 - [x] Identifiant complet des règles semgrep conservé dans les preuves, pour
       des annotations `nosemgrep` précises
-- [ ] Arrêt de tout l'arbre de processus d'un moteur interrompu, avec gestion
-      de Ctrl+C. Aujourd'hui seul le moteur est arrêté, ses éventuels
-      sous-processus peuvent finir seuls après la fin du scan
-- [ ] Vue web des constats de code, à côté du verdict de santé
+- [x] Onglet « auditer » dans l'interface, un dépôt public nommé à la main,
+      une analyse à la fois, annulable, moteurs et constats affichés,
+      brouillon de signalement à copier ou enregistrer, rien n'est envoyé.
+      Lien « auditer » sur chaque résultat de recherche, sans lancement
+- [x] Lancer et annuler en `POST` seulement, refusés depuis une autre origine
+      (une page servie sur un autre port de la machine est du même site)
+- [x] Ctrl+C arrête l'analyse en cours et efface son clone, en ligne de
+      commande comme depuis l'interface. Aucun rapport n'est écrit pour un
+      scan interrompu
+- [x] Page de session réduite à une ligne
+- [ ] Arrêt de tout l'arbre de processus d'un moteur interrompu. Aujourd'hui
+      seul le moteur est arrêté, ses éventuels sous-processus peuvent finir
+      seuls, l'attente de leurs sorties étant bornée à cinq secondes
 - [ ] Bac à sable d'exécution pour analyser un dépôt tiers non fiable
 
 ## Discipline (non négociable)

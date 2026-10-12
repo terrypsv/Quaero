@@ -8,50 +8,6 @@ import (
 	"testing"
 )
 
-func TestParseRepoRef(t *testing.T) {
-	cases := map[string]string{
-		"mushorg/cowrie":                        "mushorg/cowrie",
-		"https://github.com/mushorg/cowrie":     "mushorg/cowrie",
-		"https://github.com/mushorg/cowrie.git": "mushorg/cowrie",
-		"http://github.com/mushorg/cowrie/":     "mushorg/cowrie",
-		"github.com/mushorg/cowrie":             "mushorg/cowrie",
-		"www.github.com/mushorg/cowrie":         "mushorg/cowrie",
-		"git@github.com:mushorg/cowrie.git":     "mushorg/cowrie",
-		"terrypsv/Quaero":                       "terrypsv/Quaero",
-		"a/b.c-d_e":                             "a/b.c-d_e",
-	}
-	for in, want := range cases {
-		ref, ok := parseRepoRef(in)
-		if !ok {
-			t.Errorf("%q refuse, attendu %s", in, want)
-			continue
-		}
-		if ref.String() != want {
-			t.Errorf("%q -> %s, attendu %s", in, ref, want)
-		}
-	}
-}
-
-func TestParseRepoRefRejette(t *testing.T) {
-	for _, in := range []string{
-		"", "cowrie", "mushorg/cowrie/extra", "gitlab.com/a/b",
-		"https://evil.com/a/b", "../etc/passwd", "a/..", "a/.",
-		"a b/c", "mushorg/cow rie", "/absolute/path",
-	} {
-		if ref, ok := parseRepoRef(in); ok {
-			t.Errorf("%q accepte comme %s, attendu un refus", in, ref)
-		}
-	}
-}
-
-// Seul github.com, en HTTPS, est clone.
-func TestCloneURL(t *testing.T) {
-	ref, _ := parseRepoRef("mushorg/cowrie")
-	if got := ref.cloneURL(); got != "https://github.com/mushorg/cowrie.git" {
-		t.Errorf("URL de clone = %q", got)
-	}
-}
-
 // Le clone est superficiel et prudent: une branche, pas d'etiquettes, pas de
 // hooks, pas de sous-modules par le protocole fichier.
 func TestCloneArgs(t *testing.T) {

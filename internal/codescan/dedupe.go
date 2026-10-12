@@ -3,7 +3,11 @@
 
 package codescan
 
-import "github.com/terrypsv/Quaero/internal/finding"
+import (
+	"fmt"
+
+	"github.com/terrypsv/Quaero/internal/finding"
+)
 
 // EvidenceEngine est le type de preuve qui nomme le moteur ayant produit un
 // constat. Un constat fusionne en porte un par moteur d'accord.
@@ -17,6 +21,36 @@ var enginePriority = map[string]int{
 	"gosec":       2,
 	"semgrep":     2,
 	"osv-scanner": 1,
+}
+
+// uniqueIDs rend chaque identifiant unique dans le rapport. Deux constats de la
+// meme regle sur la meme ligne, ou deux chemins que l'assainissement ramene a la
+// meme forme (a/js:3 et a.js:3), porteraient sinon le meme identifiant, et le
+// brouillon de l'un s'ouvrirait pour l'autre. Le premier garde l'identifiant,
+// les suivants prennent -2, -3, dans l'ordre des moteurs.
+func uniqueIDs(fs []finding.Finding) []finding.Finding {
+	seen := make(map[string]bool, len(fs))
+	for _, f := range fs {
+		seen[f.ID] = true
+	}
+	count := map[string]int{}
+	for i := range fs {
+		id := fs[i].ID
+		count[id]++
+		if count[id] == 1 {
+			continue
+		}
+		n := count[id]
+		next := fmt.Sprintf("%s-%d", id, n)
+		for seen[next] {
+			n++
+			next = fmt.Sprintf("%s-%d", id, n)
+		}
+		count[id] = n
+		seen[next] = true
+		fs[i].ID = next
+	}
+	return fs
 }
 
 // dedupe regroupe les constats qui decrivent la meme vulnerabilite connue,

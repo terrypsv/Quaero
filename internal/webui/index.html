@@ -35,6 +35,9 @@
     --mono: "JetBrains Mono", Consolas, "SF Mono", Menlo, "DejaVu Sans Mono", monospace;
   }
   * { box-sizing: border-box; }
+  /* hidden l'emporte sur les display des classes: un bloc masque l'est
+     vraiment, sans laisser d'ecart vide dans la colonne. */
+  [hidden] { display: none !important; }
   html { background: var(--papier); }
   /* La page occupe au moins la hauteur de la fenetre et le pied se pose en
      bas: colle au bord sur l'accueil, a la suite de la liste quand elle est
@@ -79,15 +82,30 @@
   .quota.bas .jauge i { background: var(--sombre); }
   .quota.bas .jauge i.plein { background: var(--acide); }
 
+  /* Deux onglets: trouver un depot, puis l'auditer. */
+  .onglets { display: flex; margin-top: -8px; }
+  .onglet {
+    display: inline-flex; align-items: center; gap: 8px;
+    min-height: 40px; padding: 0 18px; border: 2px solid var(--encre); border-radius: 0;
+    background: transparent; font-weight: 700; font-size: 15px; cursor: pointer;
+  }
+  .onglet + .onglet { margin-left: -2px; }
+  .onglet:hover { background: var(--acide); }
+  .onglet[aria-selected="true"] { background: var(--encre); color: var(--acide); }
+  /* Une analyse tourne: le temoin reste visible depuis l'autre onglet. */
+  .temoin { width: 8px; height: 8px; background: var(--acide); border: 1.5px solid var(--encre); }
+  .vue { display: flex; flex-direction: column; gap: 28px; }
+  .quota.ailleurs { display: none; }
+
   .question { display: flex; flex-direction: column; gap: 12px; }
   .barre { display: flex; flex-wrap: wrap; border: 3px solid var(--encre); background: var(--blanc); }
-  #q {
+  .barre input {
     flex: 999 1 300px; min-width: 0; min-height: 64px; padding: 0 18px;
     border: 0; border-radius: 0; background: transparent; color: var(--encre);
     font: 19px var(--texte);
   }
-  #q:focus-visible { outline: none; box-shadow: inset 0 -5px 0 var(--acide); }
-  #q::placeholder { color: var(--pale); }
+  .barre input:focus-visible { outline: none; box-shadow: inset 0 -5px 0 var(--acide); }
+  .barre input::placeholder { color: var(--pale); }
   .go {
     flex: 0 0 auto; min-height: 64px; padding: 0 28px; border: 0; border-radius: 0;
     background: var(--encre); color: var(--acide); font-weight: 700; font-size: 16px; cursor: pointer;
@@ -212,6 +230,38 @@
   .pagination .cout { color: var(--pale); }
   .reglages { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
 
+  /* Audit: l'etat de l'analyse, les moteurs, puis les constats a verifier. */
+  .consigne { margin: 0; font-size: 13px; color: var(--gris); }
+  .encours { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+  .encours .attente { padding-bottom: 12px; font-variant-numeric: tabular-nums; }
+  .moteurs { display: flex; flex-wrap: wrap; gap: 6px 8px; margin-top: 12px; font-size: 13px; }
+  .moteur { display: inline-flex; align-items: baseline; gap: 6px; padding: 2px 8px; border: 1.5px solid var(--encre); background: var(--blanc); cursor: default; }
+  .moteur small { font-size: 12px; color: var(--gris); font-variant-numeric: tabular-nums; }
+  .moteur.manque { border-style: dashed; background: transparent; color: var(--gris); }
+  .moteur.panne { background: var(--encre); color: var(--papier); }
+  .moteur.panne small { color: var(--acide); }
+  .constat .l1 { align-items: center; }
+  /* La gravite se lit au mot et a la forme, pas a la seule couleur. */
+  .grav { flex: 0 0 auto; padding: 1px 8px; border: 2px solid var(--encre); font-size: 12px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
+  .grav.critical { background: var(--encre); color: var(--acide); }
+  .grav.high { background: var(--encre); color: var(--papier); }
+  .grav.medium { background: var(--blanc); }
+  .grav.low { border-color: var(--trait); color: var(--gris); }
+  .grav.info { border-color: var(--trait); color: var(--pale); }
+  .titre { min-width: 0; font-weight: 700; font-size: 17px; overflow-wrap: anywhere; }
+  .lieu { margin: 0; display: flex; flex-wrap: wrap; gap: 2px 14px; font-size: 14px; color: var(--gris); }
+  .lieu code { color: var(--encre); overflow-wrap: anywhere; }
+  .plus-corps pre { margin: 0; padding: 8px 10px; background: var(--papier); font: 12px/1.5 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; font-variant-ligatures: none; }
+  .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; font-size: 14px; }
+  .brouillon { display: flex; flex-direction: column; gap: 10px; padding: 12px; background: var(--blanc); border: 2px solid var(--encre); }
+  .brouillon textarea {
+    width: 100%; min-height: 320px; padding: 10px; border: 1px solid var(--trait); border-radius: 0;
+    background: var(--papier); color: var(--encre); font: 12px/1.5 var(--mono); resize: vertical; font-variant-ligatures: none;
+  }
+  .base { margin: 0; font-size: 12px; color: var(--gris); }
+  .lien { padding: 0; border: 0; background: none; color: var(--encre); font-size: 14px; text-decoration: underline; text-underline-offset: 4px; cursor: pointer; }
+  .meta .lien { margin-left: auto; }
+
   .pied { flex-shrink: 0; background: var(--encre); color: var(--papier); border-top: 6px solid var(--acide); }
   .pied-in {
     max-width: 960px; margin: 0 auto; padding: 20px;
@@ -255,6 +305,12 @@
     </div>
   </header>
 
+  <nav class="onglets" role="tablist" aria-label="Mode">
+    <button type="button" class="onglet" role="tab" id="tab-recherche" aria-controls="vue-recherche" aria-selected="true">rechercher</button>
+    <button type="button" class="onglet" role="tab" id="tab-audit" aria-controls="vue-audit" aria-selected="false">auditer<span class="temoin" id="temoin" title="analyse en cours" hidden></span></button>
+  </nav>
+
+  <div class="vue" id="vue-recherche" role="tabpanel" aria-labelledby="tab-recherche">
   <p class="intro">Décris le projet GitHub que tu cherches. Quaero traduit ta phrase en requête, classe les dépôts trouvés et indique pour chacun s'il est encore entretenu.</p>
 
   <section class="question" aria-label="Recherche">
@@ -274,6 +330,21 @@
 
   <div id="readback"></div>
   <section id="out" aria-live="polite"></section>
+  </div>
+
+  <div class="vue" id="vue-audit" role="tabpanel" aria-labelledby="tab-audit" hidden>
+  <p class="intro">Nomme un dépôt public. Quaero le clone, l'analyse, puis l'efface.</p>
+  <section class="question" aria-label="Audit">
+    <div class="barre">
+      <label for="cible" class="cache">Dépôt à analyser</label>
+      <input type="text" id="cible" autocomplete="off" spellcheck="false"
+             placeholder="owner/repo ou URL github.com">
+      <button class="go" id="analyser" type="button">analyser</button>
+    </div>
+    <p class="consigne">Analyse statique, moteurs en environnement durci. Pour du code douteux, lance Quaero dans une machine jetable.</p>
+  </section>
+  <section id="audit" aria-live="polite"></section>
+  </div>
 
 </div>
 
@@ -285,7 +356,7 @@
       <span class="version" id="version"></span>
     </div>
     <p class="droits">Terry Passave &copy; 2026. Tous droits réservés.</p>
-    <p class="note-pied">Forks et dépôts archivés écartés par défaut. Écris « y compris les forks » pour les garder.</p>
+    <p class="note-pied" id="note-pied">Forks et dépôts archivés écartés par défaut. Écris « y compris les forks » pour les garder.</p>
   </div>
 </footer>
 
@@ -645,6 +716,14 @@ function init() {
     if (e.key === "Enter") run({ fresh: true });
   });
   $("q").addEventListener("input", schedulePreview);
+  $("tab-recherche").onclick = function () { showTab("recherche"); };
+  $("tab-audit").onclick = function () { showTab("audit"); };
+  $("analyser").onclick = startScan;
+  $("cible").addEventListener("keydown", function (e) {
+    if (e.key === "Enter") startScan();
+  });
+  showTab(location.hash === "#auditer" ? "audit" : "recherche");
+  loadScan();
   fetch("/api/version").then(function (r) { return r.json(); })
     .then(function (d) { $("version").textContent = d.version || ""; })
     .catch(function () {});
@@ -1039,6 +1118,13 @@ function render() {
     $("out").scrollIntoView({ block: "start" });
   });
   bind("#out [data-more]", function () { run({ more: true }); });
+  // Auditer prepare l'analyse sans la lancer: lancer reste un geste a part.
+  bind("#out [data-audit]", function (b) {
+    $("cible").value = b.getAttribute("data-audit");
+    showTab("audit");
+    window.scrollTo(0, 0);
+    $("cible").focus();
+  });
 }
 
 function btn(attr, value, text, active, n) {
@@ -1099,6 +1185,7 @@ function card(r, position) {
   if (r.lang && r.lang !== "anglais" && r.lang !== "autre") {
     h += "<span>description en " + esc(LANG_LABEL[r.lang] || r.lang) + "</span>";
   }
+  if (r.full_name) h += '<button type="button" class="lien" data-audit="' + esc(r.full_name) + '">auditer</button>';
   h += "</div>";
 
   // Les raisons du rang et du verdict restent a portee, sans encombrer la
@@ -1110,6 +1197,343 @@ function card(r, position) {
     h += '<details class="plus"><summary>pourquoi ce rang</summary><div class="plus-corps">' + details + "</div></details>";
   }
   return h + "</li>";
+}
+
+// ---- onglets ---------------------------------------------------------------
+
+// La note du pied suit l'onglet: chacun dit la regle qui le concerne.
+var FOOT_NOTES = {
+  recherche: "Forks et dépôts archivés écartés par défaut. Écris « y compris les forks » pour les garder.",
+  audit: "Rien n'est envoyé. Chaque constat se confirme sur une instance locale avant tout signalement."
+};
+
+function showTab(name) {
+  var onAudit = name === "audit";
+  $("vue-recherche").hidden = onAudit;
+  $("vue-audit").hidden = !onAudit;
+  $("tab-recherche").setAttribute("aria-selected", onAudit ? "false" : "true");
+  $("tab-audit").setAttribute("aria-selected", onAudit ? "true" : "false");
+  // Le quota ne concerne que la recherche: l'analyse clone sans passer par
+  // l'API de recherche.
+  $("quota").classList.toggle("ailleurs", onAudit);
+  $("note-pied").textContent = FOOT_NOTES[onAudit ? "audit" : "recherche"];
+  try { history.replaceState(null, "", onAudit ? "#auditer" : location.pathname + location.search); } catch (e) { /* sans effet */ }
+}
+
+// ---- audit -----------------------------------------------------------------
+
+// Une analyse a la fois, tenue par le serveur: la page la relit au
+// chargement, puis chaque seconde tant qu'elle tourne.
+var SEVERITY_LABEL = { critical: "critique", high: "élevée", medium: "moyenne", low: "faible", info: "info" };
+var STAGE_LABEL = { clone: "clone de", analyse: "analyse de", annulation: "annulation de" };
+
+var audit = { available: true, job: null, notice: null, timer: null, misses: 0, drafts: {} };
+
+function api(method, url, body) {
+  var o = { method: method, headers: {} };
+  if (body) {
+    o.headers["Content-Type"] = "application/x-www-form-urlencoded";
+    o.body = body;
+  }
+  return fetch(url, o).then(function (r) {
+    return r.json().catch(function () { return {}; }).then(function (d) {
+      d.status = r.status;
+      return d;
+    });
+  });
+}
+
+// Une lecture manquee ne fige pas le suivi: tant que l'analyse tourne, on
+// reessaie, de plus en plus espace, jusqu'a une lecture reussie.
+function loadScan() {
+  api("GET", "/api/scan").then(function (d) {
+    if (d.status !== 200) {
+      audit.notice = ["erreur", d.error || "état de l'analyse illisible"];
+      retryScan();
+      return;
+    }
+    audit.misses = 0;
+    audit.available = d.available !== false;
+    setJob(d.job || null);
+  }).catch(retryScan);
+}
+
+function retryScan() {
+  if (!(audit.job && audit.job.running)) { renderAudit(); return; }
+  audit.misses = (audit.misses || 0) + 1;
+  clearTimeout(audit.timer);
+  audit.timer = setTimeout(loadScan, Math.min(1000 * Math.pow(2, audit.misses), 15000));
+  renderAudit();
+}
+
+function setJob(job) {
+  if (!job || !audit.job || job.id !== audit.job.id) audit.drafts = {};
+  // L'avis "deja en cours" ne vaut que tant que l'analyse tourne.
+  if (audit.notice && audit.notice[2] && !(job && job.running)) audit.notice = null;
+  if (audit.notice && audit.notice[0] === "erreur" && audit.misses === 0) audit.notice = null;
+  audit.job = job;
+  clearTimeout(audit.timer);
+  if (job && job.running) audit.timer = setTimeout(loadScan, 1000);
+  renderAudit();
+}
+
+function setNotice(title, text) {
+  audit.notice = [title, text];
+  renderAudit();
+}
+
+function startScan() {
+  var target = $("cible").value.trim();
+  if (!target) { $("cible").focus(); return; }
+  audit.notice = null;
+  $("analyser").disabled = true;
+  api("POST", "/api/scan", "repo=" + encodeURIComponent(target)).then(function (d) {
+    if (d.status === 202) { setJob(d.job); return; }
+    if (d.status === 409) {
+      audit.notice = ["déjà en cours", "Une analyse tourne, attends sa fin ou annule-la.", true];
+      setJob(d.job);
+      return;
+    }
+    if (d.status === 400) {
+      setNotice("cible refusée", "« " + target + " » n'est pas un dépôt GitHub. Écris owner/repo ou une URL github.com.");
+      return;
+    }
+    setNotice("erreur", d.error || "analyse impossible (" + d.status + ")");
+  }).catch(function (err) {
+    setNotice("erreur réseau", String(err));
+  });
+}
+
+function cancelScan() {
+  var job = audit.job;
+  if (!job) return;
+  api("POST", "/api/scan/cancel", "id=" + encodeURIComponent(job.id)).then(function (d) {
+    if (d.job) setJob(d.job);
+    else loadScan();
+  }).catch(function () { loadScan(); });
+}
+
+function duration(s) {
+  s = Math.max(0, Math.round(s || 0));
+  if (s < 60) return s + " s";
+  return Math.floor(s / 60) + " min " + pad(s % 60) + " s";
+}
+
+function seconds(s) {
+  return (Math.round((s || 0) * 10) / 10).toLocaleString("fr-FR") + " s";
+}
+
+// engines dit ce que chaque moteur a fait: sa duree, ou pourquoi il n'a rien
+// verifie. Un rapport vide n'a de sens que si les moteurs ont tourne.
+function engines(rep) {
+  var ctx = (rep.run || {}).context || {}, durations = ctx.durees_s || {}, seen = {}, order = [];
+  var set = function (name, cls, text, hint) {
+    if (!seen[name]) order.push(name);
+    seen[name] = { cls: cls, text: text, hint: hint };
+  };
+  (ctx.scanners || []).forEach(function (n) { set(n, "", seconds(durations[n]), ""); });
+  (rep.findings || []).forEach(function (f) {
+    var m = /^QRO-SCAN-(ABSENT|ERREUR|VIDE)-(.+)$/.exec(f.id || "");
+    if (!m) return;
+    if (m[1] === "ABSENT") set(m[2], "manque", "absent", f.remediation || "");
+    if (m[1] === "ERREUR") set(m[2], "panne", "en échec", f.observed || "");
+    if (m[1] === "VIDE") set(m[2], "manque", "rien à lire", f.observed || "");
+  });
+  var ok = 0, failed = 0, partial = false, h = '<div class="moteurs" aria-label="Moteurs">';
+  order.forEach(function (n) {
+    var e = seen[n];
+    if (e.cls) partial = true;
+    else ok++;
+    if (e.cls === "panne") failed++;
+    h += '<span class="moteur' + (e.cls ? " " + e.cls : "") + '"' + (e.hint ? ' title="' + esc(e.hint) + '"' : "")
+       + ">" + esc(n) + "<small>" + esc(e.text) + "</small></span>";
+  });
+  return { html: order.length ? h + "</div>" : "", ok: ok, failed: failed, partial: partial };
+}
+
+function evidenceOf(f, kind) {
+  return (f.evidence || []).filter(function (e) { return e.type === kind && e.data; })
+    .map(function (e) { return String(e.data).trim(); });
+}
+
+function findingItem(f, job) {
+  var sev = f.severity || "info";
+  var where = (f.target || {}).identifier || "";
+  var by = evidenceOf(f, "engine");
+  var h = '<li class="depot constat" data-id="' + esc(f.id) + '"><div class="l1">'
+        + '<span class="grav ' + esc(sev) + '">' + esc(SEVERITY_LABEL[sev] || sev) + "</span>"
+        + '<span class="titre">' + esc(f.title) + "</span></div>";
+  if (where || by.length) {
+    h += '<p class="lieu">' + (where ? "<code>" + esc(where) + "</code>" : "")
+       + (by.length ? "<span>" + esc(by.join(", ")) + "</span>" : "") + "</p>";
+  }
+
+  var body = "";
+  if (f.description) body += "<p>" + esc(f.description) + "</p>";
+  evidenceOf(f, "code").slice(0, 1).forEach(function (c) { body += "<pre>" + esc(c) + "</pre>"; });
+  evidenceOf(f, "rule").slice(0, 1).forEach(function (r) { body += "<p>règle <code>" + esc(r) + "</code></p>"; });
+  var refs = (f.references || []).map(function (r) { return r.id; }).filter(Boolean);
+  if (refs.length) body += "<p>" + esc(refs.join(", ")) + "</p>";
+  evidenceOf(f, "url").filter(function (u) { return /^https:\/\//.test(u); }).slice(0, 3).forEach(function (u) {
+    body += '<p><a href="' + esc(u) + '" target="_blank" rel="noopener noreferrer">' + esc(u) + "</a></p>";
+  });
+  if (f.remediation) body += "<p>" + esc(f.remediation) + "</p>";
+  if (body) h += '<details class="plus"><summary>détails</summary><div class="plus-corps">' + body + "</div></details>";
+
+  var d = audit.drafts[f.id];
+  h += '<div class="actions"><button type="button" class="choix" data-draft="' + esc(f.id) + '">'
+     + (d && d.open ? "masquer le signalement" : "préparer le signalement") + "</button></div>";
+  if (d && d.open) {
+    h += '<div class="brouillon"><textarea readonly spellcheck="false" aria-label="Brouillon de signalement">' + esc(d.text) + "</textarea>"
+       + '<div class="actions"><button type="button" class="choix" data-copy="' + esc(f.id) + '">copier</button>'
+       + '<button type="button" class="choix" data-save="' + esc(f.id) + '">enregistrer .md</button>'
+       + '<a href="' + esc(job.report_url) + '" target="_blank" rel="noopener noreferrer">signalement privé sur GitHub</a></div>'
+       + '<p class="base">Rien n\'est envoyé. Remplis les sections TO COMPLETE et retire la liste de contrôle avant de déposer.</p></div>';
+  }
+  return h + "</li>";
+}
+
+function renderAudit() {
+  var job = audit.job, h = "";
+  $("temoin").hidden = !(job && job.running);
+  $("analyser").disabled = !audit.available || !!(job && job.running);
+  if (!audit.available) {
+    $("audit").innerHTML = '<p class="erreur"><b>indisponible</b>L\'analyse n\'est pas disponible dans cette exécution.</p>';
+    return;
+  }
+  if (audit.notice) h += '<p class="erreur"><b>' + esc(audit.notice[0]) + "</b>" + esc(audit.notice[1]) + "</p>";
+
+  if (job && job.running) {
+    h += '<div class="encours"><p class="attente">' + esc(STAGE_LABEL[job.state] || "analyse de") + " <b>" + esc(job.repo)
+       + "</b>, " + duration(job.elapsed_s) + "</p>"
+       + (job.state === "annulation" ? "" : '<button type="button" class="choix" id="annuler">annuler</button>') + "</div>";
+  } else if (job && job.state === "fini") {
+    h += auditResult(job);
+  } else if (job && job.state === "annule") {
+    h += '<p class="rien">Analyse de ' + esc(job.repo) + " annulée.</p>";
+  } else if (job) {
+    h += '<p class="erreur"><b>échec</b>' + esc(job.error || "analyse impossible") + "</p>";
+  }
+  // Un avis ou une relecture ne referme pas les details deja ouverts.
+  var open = {}, items = document.querySelectorAll("#audit [data-id]"), i;
+  for (i = 0; i < items.length; i++) {
+    var dt = items[i].querySelector("details");
+    if (dt && dt.open) open[items[i].getAttribute("data-id")] = true;
+  }
+  $("audit").innerHTML = h;
+  items = document.querySelectorAll("#audit [data-id]");
+  for (i = 0; i < items.length; i++) {
+    var dn = items[i].querySelector("details");
+    if (dn && open[items[i].getAttribute("data-id")]) dn.open = true;
+  }
+  if ($("annuler")) $("annuler").onclick = cancelScan;
+  bindAudit($("audit"));
+}
+
+function auditResult(job) {
+  var rep = job.report || {}, ctx = (rep.run || {}).context || {};
+  var reportable = {};
+  (job.reportable || []).forEach(function (id) { reportable[id] = true; });
+  var list = (rep.findings || []).filter(function (f) { return reportable[f.id]; });
+  var eng = engines(rep), n = list.length;
+
+  var h = '<div class="bandeau"><h2>' + n + (n > 1 ? " constats" : " constat") + "<small>"
+        + '<a href="' + esc(job.url) + '" target="_blank" rel="noopener">' + esc(job.repo) + "</a>"
+        + (ctx.commit ? ", commit " + esc(String(ctx.commit).slice(0, 7)) : "")
+        + ", " + duration(job.elapsed_s) + "</small></h2></div>";
+  h += eng.html;
+  if (!eng.ok) {
+    return h + '<p class="erreur"><b>rien vérifié</b>' + (eng.failed
+      ? "Aucun moteur n'a fini son travail. Survole un moteur en échec pour la raison."
+      : "Aucun moteur installé. Installe semgrep et osv-scanner, puis relance.") + "</p>";
+  }
+  if (!n) {
+    return h + '<p class="rien">' + (eng.partial ? "Rien relevé, mais un moteur n'a rien vérifié." : "Rien relevé par les moteurs.") + "</p>";
+  }
+  h += '<ol class="liste">';
+  list.forEach(function (f) { h += findingItem(f, job); });
+  return h + '</ol><p class="base">À vérifier à la main. Un constat non confirmé ne se signale pas.</p>';
+}
+
+function findingById(id) {
+  var rep = (audit.job || {}).report || {};
+  return (rep.findings || []).filter(function (f) { return f.id === id; })[0];
+}
+
+// refreshItem redessine un seul constat, pour ne pas refermer ce qui est
+// ouvert ailleurs dans la liste.
+function refreshItem(id) {
+  var items = document.querySelectorAll("#audit [data-id]"), i, f = findingById(id);
+  if (!f) return;
+  for (i = 0; i < items.length; i++) {
+    if (items[i].getAttribute("data-id") === id) {
+      var was = items[i].querySelector("details");
+      var holder = document.createElement("ol");
+      holder.innerHTML = findingItem(f, audit.job);
+      var fresh = holder.firstChild, now = fresh.querySelector("details");
+      if (was && now) now.open = was.open;
+      items[i].parentNode.replaceChild(fresh, items[i]);
+      bindAudit(fresh);
+      return;
+    }
+  }
+}
+
+function bindAudit(root) {
+  var each = function (sel, fn) {
+    var nodes = root.querySelectorAll(sel), i;
+    for (i = 0; i < nodes.length; i++) {
+      (function (node) { node.onclick = function () { fn(node); }; })(nodes[i]);
+    }
+  };
+  each("[data-draft]", function (b) { toggleDraft(b.getAttribute("data-draft")); });
+  each("[data-copy]", function (b) { copyDraft(b.getAttribute("data-copy"), b); });
+  each("[data-save]", function (b) { saveDraft(b.getAttribute("data-save")); });
+}
+
+// Le brouillon est prepare par le serveur a partir du rapport en memoire. Il
+// ne part nulle part: on le copie ou on l'enregistre, puis on le depose a la
+// main, en prive.
+function toggleDraft(id) {
+  var d = audit.drafts[id], job = audit.job;
+  if (d) {
+    d.open = !d.open;
+    refreshItem(id);
+    return;
+  }
+  api("GET", "/api/scan/advisory?id=" + encodeURIComponent(job.id) + "&finding=" + encodeURIComponent(id)).then(function (r) {
+    if (r.status !== 200) { setNotice("brouillon impossible", r.error || String(r.status)); return; }
+    audit.drafts[id] = { text: r.draft, file: r.file, open: true };
+    refreshItem(id);
+  }).catch(function (err) { setNotice("erreur réseau", String(err)); });
+}
+
+function copyDraft(id, button) {
+  var d = audit.drafts[id];
+  var done = function () {
+    button.textContent = "copié";
+    setTimeout(function () { button.textContent = "copier"; }, 1500);
+  };
+  var fallback = function () {
+    var ta = button.parentNode.parentNode.querySelector("textarea");
+    ta.focus();
+    ta.select();
+    try { if (document.execCommand("copy")) done(); } catch (e) { /* copie manuelle */ }
+  };
+  if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(d.text).then(done, fallback);
+  else fallback();
+}
+
+function saveDraft(id) {
+  var d = audit.drafts[id];
+  var url = URL.createObjectURL(new Blob([d.text], { type: "text/markdown;charset=utf-8" }));
+  var a = document.createElement("a");
+  a.href = url;
+  a.download = d.file;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
 }
 
 init();

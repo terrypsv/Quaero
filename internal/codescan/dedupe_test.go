@@ -122,3 +122,24 @@ func TestRunFusionneEtLeDit(t *testing.T) {
 		t.Errorf("provenance = %v, attendu les deux moteurs", e)
 	}
 }
+
+// Deux constats de meme identifiant (meme regle, meme ligne, ou deux chemins
+// que l'assainissement confond) en gardent deux distincts, et le premier ne
+// change pas.
+func TestIdentifiantsUniques(t *testing.T) {
+	fs := uniqueIDs([]finding.Finding{
+		{ID: "QRO-SEMGREP-r-a-js-3"}, {ID: "QRO-SEMGREP-r-a-js-3"},
+		{ID: "QRO-SEMGREP-r-a-js-3-2"}, {ID: "QRO-SEMGREP-r-a-js-3"}, {ID: "autre"},
+	})
+	want := []string{"QRO-SEMGREP-r-a-js-3", "QRO-SEMGREP-r-a-js-3-3", "QRO-SEMGREP-r-a-js-3-2", "QRO-SEMGREP-r-a-js-3-4", "autre"}
+	seen := map[string]bool{}
+	for i, f := range fs {
+		if f.ID != want[i] {
+			t.Errorf("constat %d: %q, attendu %q", i, f.ID, want[i])
+		}
+		if seen[f.ID] {
+			t.Errorf("identifiant %q en double", f.ID)
+		}
+		seen[f.ID] = true
+	}
+}

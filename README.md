@@ -199,7 +199,13 @@ navigateur n'envoie ce cookie ni à une autre origine ni depuis un autre site,
 si bien qu'une page ouverte ailleurs ne peut ni lire l'interface ni lui faire
 lancer quoi que ce soit. Sans session, rien n'est servi, pas même les polices.
 Avec `-no-browser`, le lien de session s'affiche dans le terminal. Après un
-redémarrage, l'ancien onglet n'a plus le bon jeton: Quaero en ouvre un nouveau.
+redémarrage, l'ancien onglet n'a plus le bon jeton: Quaero en ouvre un nouveau,
+et l'ancien affiche une seule ligne, « Session non ouverte, relance Quaero. »
+
+Ce qui change un état (lancer ou annuler une analyse) n'accepte que `POST`, et
+seulement depuis la page elle-même. `SameSite` ne distingue pas les ports. Une
+page servie sur un autre port de cette machine est du même site et le cookie
+l'accompagne. Son en-tête `Origin`, lui, la trahit, et la requête est refusée.
 
 Écouter sur toutes les interfaces (`-addr 0.0.0.0:7777`) désactive le contrôle
 de `Host`. Seul le jeton protège alors l'interface, et le terminal le signale.
@@ -434,6 +440,33 @@ jour suffit.
 Quaero n'envoie rien. Le brouillon est écrit en `0600`, puisqu'il décrit une
 faille encore non corrigée.
 
+Ctrl+C pendant `-scan owner/repo` arrête les moteurs, efface le clone et
+n'écrit aucun rapport. Des moteurs coupés en route passeraient pour un dépôt
+vérifié.
+
+### Depuis l'interface
+
+L'onglet « auditer » fait la même chose que `-scan owner/repo`, sans terminal.
+On nomme un dépôt public (`owner/repo` ou une URL github.com), Quaero le clone,
+l'analyse avec l'environnement durci des dépôts tiers, puis efface le clone.
+Le lien « auditer » d'un résultat de recherche remplit le champ sans rien
+lancer. Lancer reste un geste à part.
+
+- Seuls les dépôts github.com sont acceptés. L'interface n'analyse jamais un
+  chemin local, qui reste l'affaire de `-scan <chemin>`.
+- Une analyse à la fois, annulable. Une seconde demande est refusée, pas mise
+  en file. Fermer l'onglet ne l'arrête pas, le bouton « annuler » si, et
+  Ctrl+C dans le terminal l'arrête et efface son clone avant de quitter.
+- Les moteurs s'affichent avec leur durée, ou absents, ou en échec. Un rapport
+  sans constat ne vaut que si les moteurs ont tourné, et la page le dit.
+- « préparer le signalement » ouvre le brouillon d'un constat sous celui-ci,
+  le même que `-advisory`, à copier ou à enregistrer en `.md`, avec le lien
+  du formulaire de signalement privé du dépôt sur GitHub. Ce formulaire
+  n'existe que si le mainteneur l'a activé, sinon `SECURITY.md` dit où écrire.
+
+Le rapport et les brouillons restent en mémoire, dans le processus, jusqu'à la
+prochaine analyse. Rien n'est envoyé.
+
 ## Structure
 
 ```
@@ -443,8 +476,9 @@ internal/rank/      pertinence et santé, deux jugements distincts
 internal/audit/     santé des dépôts d'une requête, vers le schéma de constat
 internal/codescan/  audit de code (govulncheck, gosec, semgrep, osv-scanner)
 internal/advisory/  brouillon de signalement privé à partir d'un constat
+internal/repo/      lecture des références de dépôt GitHub, partagée
 internal/finding/   schéma de constat partagé par la suite
-internal/webui/     serveur HTTP, cache des pages, page et polices embarquées
+internal/webui/     serveur HTTP, cache des pages, analyses, page et polices
 scripts/polices.py  récupération des polices de l'interface
 cmd/quaero/         point d'entrée
 ```
