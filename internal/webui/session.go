@@ -154,26 +154,32 @@ func sameToken(got, want string) bool {
 	return want != "" && subtle.ConstantTimeCompare([]byte(got), []byte(want)) == 1
 }
 
-// deny refuse une requete sans session valide, en JSON pour l'API et en texte
-// pour la page, sans rien dire du jeton attendu.
+// deny refuse une requete sans session valide, en JSON pour l'API et avec une
+// page qui dit quoi faire pour le reste, sans rien dire du jeton attendu.
 func deny(w http.ResponseWriter, r *http.Request) {
 	if strings.HasPrefix(r.URL.Path, "/api/") {
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "session non reconnue"})
 		return
 	}
-	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(http.StatusUnauthorized)
-	_, _ = w.Write([]byte("Session non reconnue. Ouvre le lien affiche dans le terminal ou Quaero a demarre.\n"))
+	// Page embarquee dans le binaire (go:embed), sans donnee venue de la
+	// requete: il n'y a rien a echapper.
+	// nosemgrep: go.lang.security.audit.xss.no-direct-write-to-responsewriter.no-direct-write-to-responsewriter
+	_, _ = w.Write(sessionHTML)
 }
 
 // setSecurityHeaders pose les en-tetes de defense en profondeur. La page ne
 // charge rien d'exterieur: la politique de contenu n'autorise que ses propres
-// scripts et styles en ligne et ses appels a sa propre API.
+// scripts et styles en ligne, ses polices embarquees et ses appels a sa propre
+// API.
 func setSecurityHeaders(w http.ResponseWriter) {
 	h := w.Header()
 	h.Set("Content-Security-Policy",
 		"default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; "+
-			"connect-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
+			"connect-src 'self'; img-src 'self' data:; font-src 'self'; "+
+			"base-uri 'none'; form-action 'self'; frame-ancestors 'none'")
 	h.Set("X-Content-Type-Options", "nosniff")
 	h.Set("X-Frame-Options", "DENY")
 	// Aucune adresse locale ne part vers les sites ouverts depuis la page.

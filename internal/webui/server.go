@@ -9,11 +9,13 @@
 package webui
 
 import (
+	"bytes"
 	"context"
-	_ "embed"
+	"embed"
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"path"
 	"strconv"
 	"strings"
 	"time"
@@ -26,6 +28,19 @@ import (
 
 //go:embed index.html
 var indexHTML []byte
+
+// sessionHTML est la page montree a un navigateur sans session. Elle ne charge
+// rien: sans session, meme les polices restent fermees.
+//
+//go:embed session.html
+var sessionHTML []byte
+
+// fontFiles porte les polices de l'interface, produites par scripts/polices.py
+// et livrees avec leur licence. Elles sont dans le binaire parce que la
+// politique de contenu n'autorise aucune ressource exterieure.
+//
+//go:embed fonts
+var fontFiles embed.FS
 
 // Search scopes. English-only is the default because widening costs one API
 // call per language variant, and making that automatic would quietly multiply
@@ -67,6 +82,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/", s.handleIndex)
 	mux.HandleFunc("/api/search", s.handleSearch)
 	mux.HandleFunc("/api/version", s.handleVersion)
+	mux.HandleFunc("/fonts/", s.handleFont)
 	return guard{token: s.Token, allowed: allowedHosts(s.Addr), next: mux}
 }
 
@@ -83,6 +99,27 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	// l'exterieur n'y passe, il n'y a rien a echapper.
 	// nosemgrep: go.lang.security.audit.xss.no-direct-write-to-responsewriter.no-direct-write-to-responsewriter
 	_, _ = w.Write(indexHTML)
+}
+
+// handleFont sert une police embarquee, et rien d'autre: un nom sans dossier,
+// en .woff2, present dans le binaire. Le reste du dossier (licences, sommes de
+// controle) n'est pas servi.
+func (s *Server) handleFont(w http.ResponseWriter, r *http.Request) {
+	name := strings.TrimPrefix(r.URL.Path, "/fonts/")
+	if name == "" || name != path.Base(name) || !strings.HasSuffix(name, ".woff2") {
+		http.NotFound(w, r)
+		return
+	}
+	data, err := fontFiles.ReadFile("fonts/" + name)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	w.Header().Set("Content-Type", "font/woff2")
+	// Une police ne change qu'avec le binaire: la garder un jour evite de la
+	// recharger a chaque recherche.
+	w.Header().Set("Cache-Control", "private, max-age=86400")
+	http.ServeContent(w, r, name, time.Time{}, bytes.NewReader(data))
 }
 
 func (s *Server) handleVersion(w http.ResponseWriter, r *http.Request) {

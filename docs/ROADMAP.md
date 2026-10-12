@@ -11,6 +11,8 @@
 - [x] Classement par pertinence, nom prioritaire sur popularité
 - [x] Verdict de santé par dépôt, expliqué
 - [x] Interface web embarquée, filtres par niveau de santé
+- [x] Interface Index, phrase relue et surlignée mot à mot, santé en carrés,
+      polices embarquées sous licence OFL, page d'explication sans session
 - [ ] Validation d'usage réel sur des recherches quotidiennes
 - [ ] Release multi-plateforme
 
