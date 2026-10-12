@@ -125,6 +125,24 @@ par défaut, parce que le processus porte un jeton: un outil exposé sur toutes
 les interfaces par défaut est un outil qui laisse fuir ce jeton la première
 fois qu'il tourne sur un réseau qui n'est pas le sien.
 
+### L'interface
+
+Papier, encre, et un vert acide qui surligne ce que Quaero a compris. Après
+une recherche, la phrase revient en grand, telle qu'elle a été tapée. Chaque
+mot compris est surligné et numéroté, et la liste en dessous dit ce que chaque
+numéro est devenu dans la requête. Les mots écartés sont barrés, les mots vides
+grisés. La requête envoyée reste visible, avec ses formulations en mode
+approfondi.
+
+La santé d'un dépôt se lit en quatre carrés, pleins pour un projet actif, vides
+pour un projet archivé. La forme suffit, sans la couleur.
+
+Les polices (JetBrains Mono, Syne, et Archivo pour le logotype) sont embarquées
+dans le binaire, puisque la politique de contenu n'autorise aucune ressource
+extérieure. Elles sont sous licence SIL OFL 1.1, livrées avec leur licence dans
+`internal/webui/fonts/`. `python scripts/polices.py` les récupère, à relancer
+seulement pour en changer.
+
 ### Session locale protégée
 
 Écouter sur 127.0.0.1 ne suffit pas. Une page web malveillante ouverte dans le
@@ -144,7 +162,8 @@ Ce lien ouvre la session. Il ne vaut que pour cette execution, ne le partage pas
 
 Le jeton passe une fois dans l'adresse, puis vit dans un cookie `HttpOnly` et
 `SameSite=Strict`, et l'adresse est nettoyée. Sans lui, la page comme l'API
-répondent 401. La comparaison se fait en temps constant. Les réponses portent
+répondent 401, la page avec une explication et rien d'autre (pas même les
+polices). La comparaison se fait en temps constant. Les réponses portent
 une politique de contenu stricte (aucune ressource extérieure, pas d'intégration
 dans un cadre) et `Referrer-Policy: no-referrer`.
 
@@ -281,7 +300,8 @@ internal/rank/      pertinence et santé, deux jugements distincts
 internal/audit/     santé des dépôts d'une requête, vers le schéma de constat
 internal/codescan/  audit de code d'un dépôt local (govulncheck, gosec)
 internal/finding/   schéma de constat partagé par la suite
-internal/webui/     serveur HTTP et page embarquée
+internal/webui/     serveur HTTP, page et polices embarquées
+scripts/polices.py  récupération des polices de l'interface
 cmd/quaero/         point d'entrée
 ```
 

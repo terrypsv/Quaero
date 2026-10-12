@@ -4,231 +4,215 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Quaero</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='28' cy='28' r='19' fill='none' stroke='%23101010' stroke-width='10'/%3E%3Crect x='41' y='41' width='18' height='18' fill='%23C6F432' stroke='%23101010' stroke-width='4'/%3E%3C/svg%3E">
 <style>
+  /* Direction Index: papier, encre, et un vert acide qui surligne ce que
+     Quaero a compris. Les polices sont embarquees dans le binaire (voir
+     scripts/polices.py), la politique de contenu n'en autorise pas d'autres. */
+  @font-face {
+    font-family: "JetBrains Mono"; src: url("/fonts/jetbrains-mono.woff2") format("woff2");
+    font-weight: 400 800; font-style: normal; font-display: swap;
+  }
+  @font-face {
+    font-family: "Syne"; src: url("/fonts/syne.woff2") format("woff2");
+    font-weight: 700 800; font-style: normal; font-display: swap;
+  }
+  @font-face {
+    font-family: "Archivo Quaero"; src: url("/fonts/archivo-quaero.woff2") format("woff2");
+    font-weight: 800; font-stretch: 125%; font-style: normal; font-display: block;
+  }
   :root {
-    --bg: #0b0f16;
-    --bg-2: #0f1520;
-    --panel: #151c28;
-    --panel-2: #1b2331;
-    --line: #232c3b;
-    --line-2: #2e3a4d;
-    --text: #e8eef7;
-    --muted: #8b98ab;
-    --dim: #5d6b80;
-    --accent: #6aa9ff;
-    --accent-2: #8b7bff;
-    --ok: #4ec97a;
-    --calm: #e0b13c;
-    --warn: #ec8a4c;
-    --bad: #ff6b60;
-    --dead: #6e7d91;
+    --papier: #F1F1EE;
+    --encre: #101010;
+    --gris: #5E5E5A;
+    --pale: #8C8C86;
+    --acide: #C6F432;
+    --blanc: #FFFFFF;
+    --mono: "JetBrains Mono", Consolas, "SF Mono", Menlo, "DejaVu Sans Mono", monospace;
+    --titre: "Syne", "Segoe UI", system-ui, -apple-system, sans-serif;
   }
   * { box-sizing: border-box; }
+  html { background: var(--papier); }
   body {
-    margin: 0;
-    background:
-      radial-gradient(1100px 500px at 15% -8%, rgba(106,169,255,.09), transparent 60%),
-      radial-gradient(900px 420px at 88% -12%, rgba(139,123,255,.08), transparent 60%),
-      var(--bg);
-    color: var(--text);
-    font: 15px/1.6 -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    -webkit-font-smoothing: antialiased;
+    margin: 0; background: var(--papier); color: var(--encre);
+    font: 15px/1.55 var(--mono); -webkit-font-smoothing: antialiased;
+    /* JetBrains Mono dessine >= en un seul signe: une requete a recopier doit
+       montrer les caracteres qu'elle contient. */
+    font-variant-ligatures: none;
   }
-  .wrap { max-width: 1100px; margin: 0 auto; padding: 44px 22px 90px; }
+  a { color: var(--encre); text-underline-offset: 4px; }
+  button { font: inherit; color: inherit; }
+  :focus-visible { outline: 3px solid var(--encre); outline-offset: 2px; }
+  .gris { color: var(--gris); }
 
-  .brand { display: flex; align-items: baseline; gap: 12px; margin-bottom: 6px; }
-  h1 {
-    font-size: 34px; margin: 0; letter-spacing: -0.8px; font-weight: 700;
-    background: linear-gradient(100deg, var(--accent), var(--accent-2));
-    -webkit-background-clip: text; background-clip: text; color: transparent;
-  }
-  .ver { color: var(--dim); font-size: 12px; font-family: ui-monospace, Consolas, monospace; }
-  .tagline { color: var(--muted); margin: 0 0 26px; font-size: 15.5px; }
+  .page { max-width: 1180px; margin: 0 auto; padding: 28px 20px 64px; display: flex; flex-direction: column; gap: 40px; }
 
-  .searchbar { display: flex; gap: 10px; }
-  .field { flex: 1; }
-  input[type=text] {
-    width: 100%; padding: 15px 16px; font-size: 16px;
-    background: var(--panel); color: var(--text);
-    border: 1px solid var(--line); border-radius: 11px; outline: none;
-    transition: border-color .15s, box-shadow .15s;
+  .tete {
+    display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+    gap: 12px 32px; padding-bottom: 16px; border-bottom: 3px solid var(--encre);
   }
-  input[type=text]::placeholder { color: var(--dim); }
-  input[type=text]:focus {
-    border-color: var(--accent);
-    box-shadow: 0 0 0 3px rgba(106,169,255,.14);
+  .marque { display: inline-flex; align-items: center; gap: 12px; text-decoration: none; }
+  .mot {
+    font-family: "Archivo Quaero", var(--titre); font-weight: 800; font-stretch: 125%;
+    font-size: 28px; line-height: 1; letter-spacing: -1px;
   }
-  .btn-go {
-    padding: 15px 26px; font-size: 15px; font-weight: 650; cursor: pointer;
-    background: linear-gradient(100deg, var(--accent), var(--accent-2));
-    color: #06101f; border: 0; border-radius: 11px;
-    transition: filter .15s, transform .05s;
-  }
-  .btn-go:hover:not(:disabled) { filter: brightness(1.08); }
-  .btn-go:active:not(:disabled) { transform: translateY(1px); }
-  .btn-go:disabled { opacity: .5; cursor: default; }
+  .etat { color: var(--gris); font-size: 13px; }
 
-  .suggest { margin-top: 14px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-  .chip {
-    background: var(--panel); color: var(--muted); border: 1px solid var(--line);
-    padding: 7px 13px; font-size: 13px; border-radius: 999px; cursor: pointer;
-    font-family: inherit; transition: all .15s;
+  .question { display: flex; flex-direction: column; gap: 24px; }
+  .barre { display: flex; flex-wrap: wrap; align-items: center; border-bottom: 3px solid var(--encre); }
+  .barre label { padding-right: 16px; color: var(--gris); font-size: 13px; }
+  #q {
+    flex: 999 1 380px; min-width: 0; min-height: 64px; padding: 0 6px;
+    border: 0; border-radius: 0; background: transparent; color: var(--encre);
+    font: 20px var(--mono); font-variant-ligatures: none;
   }
-  .chip:hover { color: var(--text); border-color: var(--accent); background: var(--panel-2); }
-  .chip.refresh { color: var(--dim); }
+  #q:focus-visible { outline: none; box-shadow: inset 0 -6px 0 var(--acide); }
+  #q::placeholder { color: var(--pale); }
+  .go {
+    flex: 0 0 auto; min-height: 64px; padding: 0 28px; border: 0; border-radius: 0;
+    background: var(--encre); color: var(--acide); font-weight: 700; font-size: 16px; cursor: pointer;
+  }
+  .go:disabled { color: var(--pale); cursor: default; }
 
-  .readback {
-    margin-top: 22px; padding: 13px 15px; border-radius: 11px;
-    background: linear-gradient(var(--panel), var(--bg-2));
-    border: 1px solid var(--line); font-size: 13.5px;
+  .idees { display: flex; flex-wrap: wrap; align-items: center; gap: 0 20px; font-size: 13px; }
+  .idee {
+    min-height: 44px; padding: 0; border: 0; background: none; cursor: pointer; color: var(--gris); text-align: left;
+    text-decoration: underline; text-decoration-color: var(--pale); text-underline-offset: 4px;
   }
-  .readback .lab { color: var(--dim); margin-right: 8px; font-size: 12px; text-transform: uppercase; letter-spacing: .6px; }
-  .facet {
-    display: inline-block; margin: 4px 6px 4px 0; padding: 4px 10px;
-    background: var(--panel-2); border: 1px solid var(--line-2);
-    border-radius: 999px; font-size: 12.5px; color: var(--text);
-  }
-  .facet.term { border-color: rgba(106,169,255,.4); color: var(--accent); }
-  .query {
-    margin-top: 10px; padding-top: 9px; border-top: 1px solid var(--line);
-    color: var(--dim); font-family: ui-monospace, Consolas, monospace;
-    font-size: 12px; word-break: break-all;
-  }
+  .idee:hover { color: var(--encre); text-decoration-color: var(--encre); }
+  .idee.autres { color: var(--encre); font-weight: 700; text-decoration: none; }
 
-  .toolbar {
-    display: flex; align-items: center; gap: 12px; margin: 26px 0 14px;
-    flex-wrap: wrap; padding-bottom: 12px; border-bottom: 1px solid var(--line);
+  .lecture-bloc { display: flex; flex-direction: column; gap: 20px; }
+  .lecture {
+    margin: 0; font: 700 clamp(34px, 6vw, 68px)/1.12 var(--titre);
+    letter-spacing: -0.03em; text-wrap: balance; overflow-wrap: anywhere;
   }
+  .lecture mark {
+    background: var(--acide); color: var(--encre); padding: 0 0.12em;
+    -webkit-box-decoration-break: clone; box-decoration-break: clone;
+  }
+  .lecture sup { font: 500 16px var(--mono); font-variant-ligatures: none; letter-spacing: 0; margin-left: 4px; }
+  .lecture .vide, .lecture s { color: var(--pale); }
+  .lecture s { text-decoration-thickness: 0.07em; }
+  .facettes {
+    list-style: none; margin: 0; padding: 0; display: grid; gap: 14px 32px;
+    grid-template-columns: repeat(auto-fit, minmax(min(250px, 100%), 1fr));
+  }
+  .facettes li { display: flex; gap: 12px; }
+  .facettes .n { font-weight: 800; }
+  .facettes code { font: 700 15px var(--mono); font-variant-ligatures: none; overflow-wrap: anywhere; }
+  .facettes .d { display: block; color: var(--gris); }
+  .reste { margin: 0; color: var(--gris); font-size: 13px; }
+  .requete { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; font-size: 13px; }
+  .requete code { font: inherit; overflow-wrap: anywhere; }
+  .requete details { flex-basis: 100%; color: var(--gris); }
+  .requete summary { cursor: pointer; min-height: 32px; }
+  .requete ol { margin: 6px 0 0; padding-left: 24px; }
 
-  /* Panneau de filtres: chaque critere sur sa ligne, avec un intitule a
-     gauche et une explication sous les boutons. Empiler des boutons sans
-     rien dire de ce qu'ils font oblige a tous les essayer pour comprendre. */
-  .panel {
-    background: var(--panel); border: 1px solid var(--line);
-    border-radius: 12px; padding: 4px 16px; margin-bottom: 20px;
-  }
-  .row {
-    display: grid; grid-template-columns: 118px 1fr; gap: 14px;
-    align-items: start; padding: 13px 0; border-top: 1px solid var(--line);
-  }
-  .row:first-child { border-top: 0; }
-  .row-label { padding-top: 5px; }
-  .row-label .name {
-    display: block; color: var(--text); font-size: 13px; font-weight: 620;
-  }
-  .row-label .sub { display: block; color: var(--dim); font-size: 11.5px; margin-top: 1px; }
-  .row-buttons { display: flex; gap: 7px; flex-wrap: wrap; }
-  .row-hint {
-    grid-column: 2; color: var(--muted); font-size: 12.5px;
-    margin-top: 8px; min-height: 17px; line-height: 1.45;
-  }
-  .count { color: var(--muted); font-size: 13.5px; }
-  .count b { color: var(--text); font-weight: 650; }
-  .group { display: flex; gap: 6px; flex-wrap: wrap; }
-  .group.right { margin-left: auto; }
-  .seg {
-    background: var(--panel); color: var(--muted); border: 1px solid var(--line);
-    padding: 6px 12px; font-size: 13px; border-radius: 8px; cursor: pointer;
-    font-family: inherit; transition: all .15s;
-  }
-  .seg:hover { color: var(--text); }
-  .seg.on {
-    color: #06101f; border-color: transparent; font-weight: 620;
-    background: linear-gradient(100deg, var(--accent), var(--accent-2));
-  }
-  .seg .n { opacity: .7; font-size: 12px; margin-left: 4px; }
-  .lab-group {
-    color: var(--dim); font-size: 11.5px; text-transform: uppercase;
-    letter-spacing: .7px; min-width: 62px;
-  }
-  .quota {
-    margin-left: auto; color: var(--dim); font-size: 12.5px;
-    padding: 4px 10px; border: 1px solid var(--line); border-radius: 999px;
-    font-family: ui-monospace, Consolas, monospace; cursor: help;
-  }
-  .quota.low { color: var(--calm); border-color: rgba(224,177,60,.4); background: rgba(224,177,60,.07); }
+  .entete { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px 24px; }
+  .entete h2 { margin: 0; font: 800 clamp(28px, 4vw, 40px)/1.05 var(--titre); letter-spacing: -0.02em; }
+  .compte { margin-top: 8px; color: var(--gris); font-size: 13px; }
+  .quota { padding: 2px 10px; border: 2px solid var(--encre); font-size: 13px; cursor: help; }
+  .quota.bas { background: var(--encre); color: var(--acide); }
 
-  .repo { padding: 18px 0; border-bottom: 1px solid var(--line); animation: rise .25s ease both; }
-  @keyframes rise { from { opacity: 0; transform: translateY(5px); } }
-  .repo .top { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-  .rankno { color: var(--dim); font-size: 12.5px; font-family: ui-monospace, Consolas, monospace; }
-  .repo a.name {
-    color: var(--accent); font-size: 17.5px; font-weight: 650;
-    text-decoration: none; letter-spacing: -0.2px;
+  .reglages { border-top: 3px solid var(--encre); }
+  .reglage {
+    display: grid; grid-template-columns: 170px minmax(0, 1fr); gap: 8px 20px;
+    padding: 14px 0; border-bottom: 1px solid var(--encre);
   }
-  .repo a.name:hover { text-decoration: underline; }
-  .desc { color: var(--text); opacity: .82; margin: 7px 0 9px; }
-  .meta { color: var(--muted); font-size: 13px; display: flex; gap: 15px; flex-wrap: wrap; align-items: center; }
-  .clickable { cursor: pointer; border-bottom: 1px dashed var(--line-2); }
-  .clickable:hover { color: var(--accent); border-color: var(--accent); }
-
-  .topics { margin-top: 9px; }
-  .topic {
-    display: inline-block; margin: 0 6px 6px 0; padding: 3px 10px;
-    background: rgba(106,169,255,.1); color: var(--accent);
-    border: 1px solid rgba(106,169,255,.2);
-    border-radius: 999px; font-size: 12px; cursor: pointer; transition: all .15s;
+  .reglage .nom { display: block; font-weight: 700; }
+  .reglage .sous { display: block; color: var(--gris); font-size: 12px; }
+  .boutons { display: flex; flex-wrap: wrap; gap: 6px; }
+  .choix {
+    min-height: 40px; padding: 0 12px; border: 2px solid var(--encre); border-radius: 0;
+    background: transparent; font-size: 14px; cursor: pointer;
   }
-  .topic:hover { background: rgba(106,169,255,.22); }
+  .choix:hover { background: var(--blanc); }
+  .choix.on { background: var(--encre); color: var(--papier); }
+  .choix .n { margin-left: 8px; color: var(--gris); }
+  .choix.on .n { color: var(--acide); }
+  .aide { grid-column: 2; min-height: 20px; color: var(--gris); font-size: 13px; }
 
-  .health { font-weight: 650; font-size: 12px; padding: 3px 10px; border-radius: 999px; }
-  .h-sain      { color: var(--ok);   background: rgba(78,201,122,.13); }
-  .h-calme     { color: var(--calm); background: rgba(224,177,60,.13); }
-  .h-dormant   { color: var(--warn); background: rgba(236,138,76,.15); }
-  .h-abandonne { color: var(--bad);  background: rgba(255,107,96,.14); }
-  .h-archive   { color: var(--dead); background: rgba(110,125,145,.16); }
-
-  .script {
-    font-size: 11.5px; padding: 3px 9px; border-radius: 999px;
-    color: var(--accent-2); background: rgba(139,123,255,.12);
-    border: 1px solid rgba(139,123,255,.22); cursor: help;
+  .note { margin: 0; padding: 12px 16px; background: var(--acide); font-size: 14px; }
+  .message { margin: 0; padding: 14px 16px; border: 3px solid var(--encre); }
+  .message.erreur { background: var(--encre); color: var(--papier); }
+  .message.erreur b { color: var(--acide); margin-right: 10px; }
+  .attente, .rien { padding: 48px 0; text-align: center; color: var(--gris); }
+  .attente::after {
+    content: ""; display: block; width: 120px; height: 10px; margin: 16px auto 0;
+    border: 2px solid var(--encre); background: linear-gradient(90deg, var(--acide) 50%, transparent 50%);
+    background-size: 200% 100%; animation: balaye 0.9s linear infinite;
   }
-  .notes { margin-top: 9px; font-size: 12.5px; color: var(--muted); }
-  .notes div { margin-top: 3px; padding-left: 13px; position: relative; }
-  .notes div::before { content: "\00b7"; position: absolute; left: 3px; color: var(--dim); }
-  .why { margin-top: 7px; font-size: 12px; color: var(--dim); font-style: italic; }
+  @keyframes balaye { from { background-position: 100% 0; } to { background-position: -100% 0; } }
 
-  .pager { display: flex; gap: 8px; justify-content: center; align-items: center; margin-top: 30px; flex-wrap: wrap; }
-  .pager .seg { min-width: 38px; text-align: center; }
-  .dots { color: var(--dim); }
-
-  .msg { padding: 14px 16px; border-radius: 11px; background: var(--panel); border: 1px solid var(--line); margin-top: 18px; font-size: 13.5px; }
-  .msg.error { border-color: rgba(255,107,96,.4); color: #ffb0a9; background: rgba(255,107,96,.06); }
-  .msg.note  { border-color: rgba(224,177,60,.35); color: #f0cf87; background: rgba(224,177,60,.05); }
-  .empty { color: var(--muted); text-align: center; padding: 56px 0; }
-  .spinner {
-    width: 22px; height: 22px; margin: 0 auto 14px; border-radius: 50%;
-    border: 2px solid var(--line-2); border-top-color: var(--accent);
-    animation: spin .7s linear infinite;
+  .liste { list-style: none; margin: 0; padding: 0; border-top: 3px solid var(--encre); }
+  .depot {
+    display: flex; flex-direction: column; gap: 6px; padding: 20px 0;
+    border-bottom: 1px solid var(--encre); animation: monte 0.2s ease both;
   }
-  @keyframes spin { to { transform: rotate(360deg); } }
+  @keyframes monte { from { opacity: 0; transform: translateY(4px); } }
+  .ligne1 { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; }
+  .rang { color: var(--gris); font-size: 13px; }
+  .nomdepot { font-weight: 700; font-size: 18px; overflow-wrap: anywhere; }
+  .ecriture { padding: 0 6px; border: 1px solid var(--encre); font-size: 12px; cursor: help; }
+  .desc { margin: 0; color: var(--gris); overflow-wrap: anywhere; }
+  .meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 18px; font-size: 13px; }
+  .sante { display: inline-flex; align-items: center; gap: 8px; font-weight: 700; cursor: help; }
+  .barres { display: inline-flex; gap: 2px; }
+  .barres i { width: 9px; height: 9px; border: 1.5px solid var(--encre); }
+  .barres i.plein { background: var(--encre); }
+  .affine {
+    min-height: 32px; padding: 0; border: 0; background: none; cursor: pointer; font-size: 13px;
+    text-decoration: underline dashed; text-underline-offset: 4px;
+  }
+  .sujets { display: flex; flex-wrap: wrap; gap: 6px; }
+  .sujet { min-height: 32px; padding: 0 8px; border: 1px solid var(--encre); background: none; font-size: 12px; cursor: pointer; }
+  .affine:hover, .sujet:hover { background: var(--acide); }
+  .notes, .pourquoi { margin: 0; color: var(--gris); font-size: 13px; }
 
-  footer { margin-top: 50px; color: var(--dim); font-size: 12.5px; text-align: center; }
+  .pagination { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 6px; }
+  .points { color: var(--gris); }
+
+  footer { padding-top: 16px; border-top: 3px solid var(--encre); color: var(--gris); font-size: 13px; }
+  footer p { margin: 0 0 4px; }
+
+  @media (max-width: 640px) {
+    .reglage { grid-template-columns: 1fr; }
+    .aide { grid-column: 1; }
+    .go { flex: 1 1 100%; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .depot { animation: none; }
+    .attente::after { animation: none; }
+  }
 </style>
 </head>
 <body>
-<div class="wrap">
-  <div class="brand">
-    <h1>Quaero</h1>
-    <span class="ver" id="version"></span>
-  </div>
-  <p class="tagline">Décrivez ce que vous cherchez. Pas la syntaxe qui le trouverait.</p>
+<div class="page">
+  <header class="tete">
+    <a class="marque" href="/" aria-label="Quaero, nouvelle recherche">
+      <svg aria-hidden="true" width="34" height="34" viewBox="0 0 64 64" fill="none"><circle cx="28" cy="28" r="19" stroke="#101010" stroke-width="10"/><rect x="41" y="41" width="18" height="18" fill="#C6F432" stroke="#101010" stroke-width="4"/></svg>
+      <span class="mot">quaero</span>
+    </a>
+    <span class="etat" id="etat">session locale</span>
+  </header>
 
-  <div class="searchbar">
-    <div class="field">
+  <section class="question" aria-label="Recherche">
+    <div class="barre">
+      <label for="q">question</label>
       <input type="text" id="q" autofocus autocomplete="off" spellcheck="false"
              placeholder="une bibliothèque go pour parser du yaml, encore maintenue">
+      <button class="go" id="go" type="button">chercher</button>
     </div>
-    <button class="btn-go" id="go">Chercher</button>
-  </div>
+    <div class="idees" id="suggest"></div>
+    <div id="readback"></div>
+  </section>
 
-  <div class="suggest" id="suggest"></div>
-  <div id="readback"></div>
-  <div id="out"></div>
+  <section id="out" aria-live="polite"></section>
 
   <footer>
-    Forks et dépôts archivés écartés par défaut. Dites « y compris les forks » pour les garder.<br>
-    <span style="opacity:.75">Quaero - Terry Passave &copy; 2026. Tous droits réservés.</span>
+    <p>Forks et dépôts archivés écartés par défaut. Dites « y compris les forks » pour les garder.</p>
+    <p>Quaero - Terry Passave &copy; 2026. Tous droits réservés.</p>
   </footer>
 </div>
 
@@ -277,13 +261,17 @@ var HEALTH_LABEL = {
   archive:   "archivé"
 };
 
+// Barres pleines par niveau, de quatre pour un projet actif a zero pour un
+// projet archive. La forme se lit sans la couleur.
+var HEALTH_BARS = { sain: 4, calme: 3, dormant: 2, abandonne: 1, archive: 0 };
+
 var HEALTH_HINT = {
   tous:      "Afficher tous les dépôts trouvés, quel que soit leur niveau d'activité",
-  sain:      "Du code a été poussé il y a moins de 3 mois : le projet vit aujourd'hui",
-  calme:     "Dernier changement il y a moins d'un an : normal pour une bibliothèque terminée qui n'a plus besoin d'évoluer",
-  dormant:   "Entre 1 et 2 ans sans le moindre changement : personne ne s'en occupe activement",
-  abandonne: "Plus de 2 ans sans changement : à considérer comme arrêté, aucun correctif ne viendra",
-  archive:   "L'auteur l'a officiellement fermé : il est en lecture seule et ne bougera plus jamais"
+  sain:      "Du code a été poussé il y a moins de 3 mois, le projet vit aujourd'hui",
+  calme:     "Dernier changement il y a moins d'un an, normal pour une bibliothèque terminée qui n'a plus besoin d'évoluer",
+  dormant:   "Entre 1 et 2 ans sans le moindre changement, personne ne s'en occupe activement",
+  abandonne: "Plus de 2 ans sans changement, à considérer comme arrêté, aucun correctif ne viendra",
+  archive:   "L'auteur l'a officiellement fermé, il est en lecture seule et ne bougera plus jamais"
 };
 
 var SORTS = [
@@ -307,22 +295,22 @@ var SCRIPT_LABEL = {
 
 var SCRIPT_HINT = {
   tous:        "Toutes les écritures confondues",
-  latin:       "Description en alphabet latin : anglais, français, espagnol, allemand, portugais…",
+  latin:       "Description en alphabet latin (anglais, français, espagnol, allemand, portugais…)",
   chinois:     "Description en caractères chinois",
   japonais:    "Description en japonais (kana et kanji)",
   coreen:      "Description en coréen (hangul)",
-  cyrillique:  "Description en cyrillique : russe, ukrainien, bulgare, serbe…",
+  cyrillique:  "Description en cyrillique (russe, ukrainien, bulgare, serbe…)",
   arabe:       "Description en écriture arabe",
   hebreu:      "Description en hébreu",
   grec:        "Description en grec",
-  devanagari:  "Description en devanagari : hindi, marathi, népalais…",
+  devanagari:  "Description en devanagari (hindi, marathi, népalais…)",
   thai:        "Description en thaï",
   indetermine: "Aucune description, l'écriture ne peut pas être déterminée"
 };
 
 var PRECISIONS = [
   ["approfondie", "approfondie",
-   "Pose la même question de cinq façons : nom du dépôt, description, sujet, expression exacte et recherche générale. Un projet trouvé par plusieurs d'entre elles remonte en tête, parce que cet accord est le signal de pertinence le plus fiable. Coûte 5 requêtes de quota."],
+   "Pose la même question de cinq façons (nom du dépôt, description, sujet, expression exacte et recherche générale). Un projet trouvé par plusieurs d'entre elles remonte en tête, parce que cet accord est le signal de pertinence le plus fiable. Coûte 5 requêtes de quota."],
   ["rapide", "rapide",
    "Une seule requête générale. Moins précis, mais instantané et économe en quota."]
 ];
@@ -333,6 +321,10 @@ var SCOPES = [
   ["elargi",  "toutes langues",
    "Relance la même recherche avec le terme principal écrit en chinois, japonais, russe, espagnol et portugais, puis fusionne les résultats. Une grande partie de GitHub est décrite dans ces langues et resterait invisible autrement. Coûte 5 requêtes de quota au lieu d'une."]
 ];
+
+// Roles de la lecture mot a mot (voir model.Segment) qui ont produit quelque
+// chose dans la requete. Ils sont surlignes et numerotes.
+var MARKED = { terme: true, langage: true, etoiles: true, recence: true, forks: true, archives: true };
 
 var state = {
   sort: "pertinence", page: 1, filter: "tous", script: "tous",
@@ -345,6 +337,16 @@ function esc(s) {
   return String(s == null ? "" : s)
     .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+
+function fmt(n) { return (n || 0).toLocaleString("fr-FR"); }
+
+function pad(n) { return n < 10 ? "0" + n : String(n); }
+
+// plain retire casse et accents, pour savoir si un terme a ete traduit ou
+// seulement normalise.
+function plain(s) {
+  return String(s).normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 }
 
 function pick(arr, n) {
@@ -361,14 +363,16 @@ function renderSuggestions() {
   box.innerHTML = "";
   pick(ALL_EXAMPLES, 4).forEach(function (text) {
     var b = document.createElement("button");
-    b.className = "chip";
+    b.type = "button";
+    b.className = "idee";
     b.textContent = text;
     b.onclick = function () { $("q").value = text; run({ page: 1 }); };
     box.appendChild(b);
   });
   var r = document.createElement("button");
-  r.className = "chip refresh";
-  r.textContent = "\u21bb autres idées";
+  r.type = "button";
+  r.className = "idee autres";
+  r.textContent = "autres idées";
   r.onclick = renderSuggestions;
   box.appendChild(r);
 }
@@ -380,7 +384,9 @@ function init() {
     if (e.key === "Enter") run({ page: 1 });
   });
   fetch("/api/version").then(function (r) { return r.json(); })
-    .then(function (d) { $("version").textContent = d.version || ""; })
+    .then(function (d) {
+      $("etat").textContent = (d.version || "") + " - session locale - " + location.host;
+    })
     .catch(function () {});
 }
 
@@ -404,7 +410,7 @@ function run(opts) {
   if (opts.precision) { state.precision = opts.precision; state.page = 1; }
 
   $("go").disabled = true;
-  $("out").innerHTML = '<div class="empty"><div class="spinner"></div>Recherche\u2026</div>';
+  $("out").innerHTML = '<p class="attente">recherche en cours</p>';
 
   var url = "/api/search?q=" + encodeURIComponent(phrase)
           + "&sort=" + encodeURIComponent(state.sort)
@@ -416,11 +422,10 @@ function run(opts) {
     .then(function (r) { return r.json(); })
     .then(function (data) {
       if (data.error) {
-        $("out").innerHTML = '<div class="msg error">' + esc(data.error) + "</div>";
-        if (data.query) {
-          $("readback").innerHTML = '<div class="readback"><div class="query">'
-            + esc(data.query) + "</div></div>";
-        }
+        // La phrase lue et la requete envoyee restent affichees: deboguer une
+        // recherche qu'on ne voit pas, c'est deviner.
+        renderReadback(data);
+        $("out").innerHTML = '<p class="message erreur"><b>erreur</b>' + esc(data.error) + "</p>";
         return;
       }
       state.data = data;
@@ -428,22 +433,84 @@ function run(opts) {
       state.script = "tous";
       renderReadback(data);
       render();
-      window.scrollTo({ top: 0, behavior: "smooth" });
     })
     .catch(function (err) {
-      $("out").innerHTML = '<div class="msg error">Erreur réseau : ' + esc(String(err)) + "</div>";
+      $("out").innerHTML = '<p class="message erreur"><b>erreur réseau</b>' + esc(String(err)) + "</p>";
     })
     .then(function () { $("go").disabled = false; });
 }
 
+// facet decrit un morceau surligne: ce qui est parti dans la requete, et ce
+// que cela veut dire.
+function facet(s, query) {
+  var m;
+  switch (s.role) {
+    case "terme":
+      if (plain(s.text) === s.value) return [s.value, "terme cherché"];
+      return [s.value, s.text.indexOf(" ") >= 0 ? "expression traduite" : "terme traduit"];
+    case "langage":
+      return ["language:" + s.value, "langage"];
+    case "etoiles":
+      return ["stars:>=" + s.value, "au moins " + fmt(parseInt(s.value, 10)) + " étoiles"];
+    case "recence":
+      m = /pushed:>=(\S+)/.exec(query || "");
+      return [m ? "pushed:>=" + m[1] : "pushed", "poussé depuis moins de " + s.value + " jours"];
+    case "forks":
+      return ["forks", "forks gardés dans les résultats"];
+    case "archives":
+      return ["archived", "dépôts archivés gardés"];
+  }
+  return [s.text, ""];
+}
+
+// renderReadback reaffiche la phrase telle qu'elle a ete tapee, mots compris
+// surlignes et numerotes, puis ce que chaque numero a donne. Une phrase mal
+// lue se voit ici avant de se voir dans les resultats.
 function renderReadback(data) {
   var it = data.intent || {};
-  var h = '<div class="readback"><span class="lab">Compris</span>';
-  (it.terms || []).forEach(function (t) { h += '<span class="facet term">' + esc(t) + "</span>"; });
-  (it.explain || []).forEach(function (e) { h += '<span class="facet">' + esc(e) + "</span>"; });
-  if (it.exclude_forks) h += '<span class="facet">sans forks</span>';
-  if (it.exclude_archived) h += '<span class="facet">sans archivés</span>';
-  h += '<div class="query">' + esc(data.query || "") + "</div></div>";
+  var segs = it.reading || [];
+  var query = data.query || "";
+  var head = "", facets = "", n = 0;
+  var dropped = [], cut = [];
+
+  segs.forEach(function (s) {
+    var t = esc(s.text);
+    if (MARKED[s.role]) {
+      n++;
+      var f = facet(s, query);
+      head += "<mark>" + t + "<sup>" + n + "</sup></mark>";
+      facets += '<li><span class="n">' + n + "</span><span><code>" + esc(f[0]) + "</code>"
+             + '<span class="d">' + esc(f[1]) + "</span></span></li>";
+      return;
+    }
+    if (s.role === "generique") { dropped.push(s.text); head += "<s>" + t + "</s>"; return; }
+    if (s.role === "limite") { cut.push(s.text); head += "<s>" + t + "</s>"; return; }
+    if (s.role === "vide") { head += '<span class="vide">' + t + "</span>"; return; }
+    head += t;
+  });
+
+  var rest = [];
+  if (dropped.length) {
+    rest.push("Écarté, " + dropped.join(", ") + (dropped.length > 1 ? ", mots génériques" : ", mot générique"));
+  }
+  if (cut.length) rest.push("Coupé, " + cut.join(", ") + ", au-delà de quatre termes");
+  var defaults = [];
+  if (it.exclude_forks) defaults.push("fork:false");
+  if (it.exclude_archived) defaults.push("archived:false");
+  if (defaults.length) rest.push("Par défaut, " + defaults.join(" "));
+
+  var h = '<div class="lecture-bloc">';
+  if (head) h += '<p class="lecture" aria-label="Phrase lue">' + head + "</p>";
+  if (facets) h += '<ol class="facettes">' + facets + "</ol>";
+  if (rest.length) h += '<p class="reste">' + esc(rest.join(". ")) + ".</p>";
+  h += '<div class="requete"><span class="gris">requête</span><code>' + esc(query) + "</code>";
+  var qs = data.queries || [];
+  if (qs.length > 1) {
+    h += "<details><summary>" + qs.length + " formulations envoyées</summary><ol>";
+    qs.forEach(function (q) { h += "<li><code>" + esc(q) + "</code></li>"; });
+    h += "</ol></details>";
+  }
+  h += "</div></div>";
   $("readback").innerHTML = h;
 }
 
@@ -453,7 +520,7 @@ function render() {
   var repos = data.repos || [];
 
   if (!repos.length) {
-    $("out").innerHTML = '<div class="empty">Aucun dépôt sur cette page. Essayez des termes plus larges.</div>';
+    $("out").innerHTML = '<p class="rien">Aucun dépôt sur cette page. Essayez des termes plus larges.</p>';
     return;
   }
 
@@ -463,25 +530,25 @@ function render() {
     if (counts[l] !== undefined) counts[l]++;
   });
 
-  var h = '<div class="toolbar"><span class="count"><b>' + repos.length
-        + "</b> sur cette page, <b>" + (data.reachable || 0).toLocaleString("fr-FR")
-        + "</b> accessibles sur " + (data.total || 0).toLocaleString("fr-FR")
-        + " trouvés \u00b7 " + esc(data.elapsed || "") + "</span>";
+  var total = data.total || 0;
+  var h = '<div class="entete"><div><h2>' + fmt(total)
+        + (total > 1 ? " dépôts correspondent" : " dépôt correspond") + "</h2>"
+        + '<div class="compte">page ' + (data.page || 1) + " sur " + (data.pages || 1)
+        + ", " + repos.length + " sur cette page, " + fmt(data.reachable) + " accessibles, "
+        + esc(data.elapsed || "") + "</div></div>";
 
   var quota = data.quota || {};
   if (quota.limit > 0) {
     var low = quota.remaining < 200;
-    h += '<span class="quota' + (low ? " low" : "") + '" title="Quota de l\'API GitHub'
-       + (quota.reset_at ? ", réinitialisé à " + esc(quota.reset_at) : "") + '">'
-       + quota.remaining + " / " + quota.limit + " requêtes</span>";
+    h += '<span class="quota' + (low ? " bas" : "") + '" title="Quota de l\'API GitHub'
+       + (quota.reset_at ? ", réinitialisé à " + esc(quota.reset_at) : "") + '">quota '
+       + fmt(quota.remaining) + "/" + fmt(quota.limit) + "</span>";
   }
-
   h += "</div>";
 
-  // Panneau de filtres. Chaque ligne porte son intitule, ses boutons et une
-  // phrase qui explique le choix actif: des boutons muets obligent a tous les
-  // essayer pour comprendre ce qu'ils font.
-  h += '<div class="panel">';
+  // Chaque reglage porte son intitule, ses boutons et une phrase qui explique
+  // le choix actif: des boutons muets obligent a tous les essayer.
+  h += '<div class="reglages">';
 
   h += row("Classer par", "ordre d'affichage",
     SORTS.map(function (s) {
@@ -490,8 +557,7 @@ function render() {
     hintFor(SORTS, state.sort));
 
   var healthButtons = [];
-  var healthKeys = ["tous", "sain", "calme", "dormant", "abandonne", "archive"];
-  healthKeys.forEach(function (level) {
+  ["tous", "sain", "calme", "dormant", "abandonne", "archive"].forEach(function (level) {
     if (level !== "tous" && counts[level] === 0) return;
     var label = level === "tous" ? "tous" : HEALTH_LABEL[level];
     healthButtons.push(btn("data-filter", level, label,
@@ -531,14 +597,18 @@ function render() {
 
   h += "</div>";
 
-  if (data.note) h += '<div class="msg note">' + esc(data.note) + "</div>";
+  if (data.note) h += '<p class="note">' + esc(data.note) + "</p>";
 
   var offset = ((data.page || 1) - 1) * 50;
-  repos.filter(function (r) {
+  var shown = repos.filter(function (r) {
     var okHealth = state.filter === "tous" || (r.health || {}).level === state.filter;
     var okScript = state.script === "tous" || (r.script || "indetermine") === state.script;
     return okHealth && okScript;
-  }).forEach(function (r, i) { h += card(r, offset + i + 1); });
+  });
+  // Le rang reste celui du classement, meme quand un filtre masque des depots.
+  h += '<ol class="liste">';
+  shown.forEach(function (r) { h += card(r, offset + repos.indexOf(r) + 1); });
+  h += "</ol>";
 
   h += pager(data);
   $("out").innerHTML = h;
@@ -552,17 +622,18 @@ function render() {
   bind("[data-refine]", function (b) { refineWith(b.getAttribute("data-refine")); });
 }
 
-// row rend une ligne du panneau: intitule, boutons, et l'explication du choix
-// actif sous les boutons plutot que cachee dans une infobulle.
+// row rend un reglage: intitule, boutons, et l'explication du choix actif sous
+// les boutons plutot que cachee dans une infobulle.
 function row(name, sub, buttons, hint) {
-  return '<div class="row"><div class="row-label"><span class="name">' + esc(name)
-       + '</span><span class="sub">' + esc(sub) + '</span></div>'
-       + '<div class="row-buttons">' + buttons + "</div>"
-       + '<div class="row-hint">' + esc(hint || "") + "</div></div>";
+  return '<div class="reglage"><div><span class="nom">' + esc(name)
+       + '</span><span class="sous">' + esc(sub) + "</span></div>"
+       + '<div class="boutons">' + buttons + "</div>"
+       + '<div class="aide">' + esc(hint || "") + "</div></div>";
 }
 
 function btn(attr, value, label, active, title, count) {
-  var h = '<button class="seg ' + (active ? "on" : "") + '" ' + attr + '="' + esc(value) + '"';
+  var h = '<button type="button" class="choix' + (active ? " on" : "") + '" '
+        + attr + '="' + esc(value) + '" aria-pressed="' + (active ? "true" : "false") + '"';
   if (title) h += ' title="' + esc(title) + '"';
   h += ">" + esc(label);
   if (count !== null && count !== undefined) h += '<span class="n">' + count + "</span>";
@@ -588,45 +659,55 @@ function pager(data) {
   var cur = data.page || 1;
   if (pages <= 1) return "";
 
-  var h = '<div class="pager">', p;
-  if (cur > 1) h += '<button class="seg" data-page="' + (cur - 1) + '">\u2039 précédent</button>';
+  var h = '<nav class="pagination" aria-label="Pages">', p;
+  if (cur > 1) h += pageBtn(cur - 1, "précédent", false);
 
   var from = Math.max(1, cur - 3);
   var to = Math.min(pages, cur + 3);
-  if (from > 1) h += '<button class="seg" data-page="1">1</button><span class="dots">\u2026</span>';
-  for (p = from; p <= to; p++) {
-    h += '<button class="seg ' + (p === cur ? "on" : "") + '" data-page="' + p + '">' + p + "</button>";
-  }
-  if (to < pages) h += '<span class="dots">\u2026</span><button class="seg" data-page="' + pages + '">' + pages + "</button>";
-  if (cur < pages) h += '<button class="seg" data-page="' + (cur + 1) + '">suivant \u203a</button>';
+  if (from > 1) h += pageBtn(1, "1", false) + '<span class="points">…</span>';
+  for (p = from; p <= to; p++) h += pageBtn(p, String(p), p === cur);
+  if (to < pages) h += '<span class="points">…</span>' + pageBtn(pages, String(pages), false);
+  if (cur < pages) h += pageBtn(cur + 1, "suivant", false);
 
-  return h + "</div>";
+  return h + "</nav>";
+}
+
+function pageBtn(page, label, current) {
+  return '<button type="button" class="choix' + (current ? " on" : "") + '" data-page="' + page + '"'
+       + (current ? ' aria-current="page"' : "") + ">" + esc(label) + "</button>";
+}
+
+function bars(level) {
+  var full = HEALTH_BARS[level] || 0, h = '<span class="barres" aria-hidden="true">', i;
+  for (i = 0; i < 4; i++) h += i < full ? '<i class="plein"></i>' : "<i></i>";
+  return h + "</span>";
 }
 
 function card(r, position) {
   var health = r.health || {};
   var level = health.level || "";
-  var h = '<div class="repo"><div class="top">';
-  h += '<span class="rankno">#' + position + "</span>";
-  h += '<a class="name" href="' + esc(r.url) + '" target="_blank" rel="noopener">'
+  var h = '<li class="depot"><div class="ligne1"><span class="rang">' + pad(position) + "</span>";
+  h += '<a class="nomdepot" href="' + esc(r.url) + '" target="_blank" rel="noopener">'
      + esc(r.full_name) + "</a>";
-  if (level) {
-    h += '<span class="health h-' + esc(level) + '" title="' + esc(HEALTH_HINT[level] || "") + '">'
-       + esc(HEALTH_LABEL[level] || level) + "</span>";
-  }
   if (r.script && r.script !== "latin" && r.script !== "indetermine") {
-    h += '<span class="script" title="' + esc(SCRIPT_HINT[r.script] || "") + '">'
+    h += '<span class="ecriture" title="' + esc(SCRIPT_HINT[r.script] || "") + '">'
        + esc(SCRIPT_LABEL[r.script] || r.script) + "</span>";
   }
   h += "</div>";
 
-  if (r.description) h += '<div class="desc">' + esc(r.description) + "</div>";
+  if (r.description) h += '<p class="desc">' + esc(r.description) + "</p>";
 
-  h += '<div class="meta"><span>\u2605 ' + (r.stars || 0).toLocaleString("fr-FR") + "</span>";
-  if (r.language) {
-    h += '<span class="clickable" data-refine="' + esc(r.language) + '">' + esc(r.language) + "</span>";
+  h += '<div class="meta">';
+  if (level) {
+    h += '<span class="sante" title="' + esc(HEALTH_HINT[level] || "") + '">'
+       + bars(level) + esc(HEALTH_LABEL[level] || level) + "</span>";
   }
-  h += "<span>" + (r.open_issues || 0) + " issue(s)</span>";
+  h += "<span>" + fmt(r.stars) + " étoiles</span>";
+  if (r.language) {
+    h += '<button type="button" class="affine" data-refine="' + esc(r.language)
+       + '" title="Ajouter ce langage à la phrase">' + esc(r.language) + "</button>";
+  }
+  h += "<span>" + fmt(r.open_issues) + " issue(s)</span>";
   if (r.license) h += "<span>" + esc(r.license) + "</span>";
   if (health.days_since_push >= 0) {
     h += "<span>" + health.days_since_push + " j depuis le dernier envoi</span>";
@@ -634,22 +715,20 @@ function card(r, position) {
   h += "</div>";
 
   if (r.topics && r.topics.length) {
-    h += '<div class="topics">';
+    h += '<div class="sujets">';
     r.topics.slice(0, 8).forEach(function (t) {
-      h += '<span class="topic" data-refine="' + esc(t) + '">' + esc(t) + "</span>";
+      h += '<button type="button" class="sujet" data-refine="' + esc(t)
+         + '" title="Ajouter ce sujet à la phrase">' + esc(t) + "</button>";
     });
     h += "</div>";
   }
 
   if (health.notes && health.notes.length) {
-    h += '<div class="notes">';
-    health.notes.forEach(function (n) { h += "<div>" + esc(n) + "</div>"; });
-    h += "</div>";
+    h += '<p class="notes">' + esc(health.notes.join(". ")) + ".</p>";
   }
+  if (r.why && r.why.length) h += '<p class="pourquoi">' + esc(r.why.join(", ")) + "</p>";
 
-  if (r.why && r.why.length) h += '<div class="why">' + esc(r.why.join(" \u00b7 ")) + "</div>";
-
-  return h + "</div>";
+  return h + "</li>";
 }
 
 init();
