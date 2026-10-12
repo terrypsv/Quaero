@@ -18,6 +18,8 @@ import (
 // brouillon de ce constat, sur la sortie standard ou dans -advisory-out.
 // Code 0 si tout s'est bien passe, 2 en cas d'erreur.
 func runAdvisory(reportPath, id, outPath string) (int, error) {
+	// #nosec G304 -- le chemin du rapport est donne par l'operateur en ligne de
+	// commande, sur sa propre machine: le lire est la fonction meme de -advisory.
 	data, err := os.ReadFile(reportPath)
 	if err != nil {
 		return 2, err

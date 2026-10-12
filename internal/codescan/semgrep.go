@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/terrypsv/Quaero/internal/finding"
 )
@@ -142,7 +143,7 @@ func projectSemgrep(r semgrepResult) finding.Finding {
 
 	out := finding.Finding{
 		ID:          "QRO-SEMGREP-" + sanitize(rule) + "-" + sanitize(loc),
-		Title:       rule + ": " + firstLine(r.Extra.Message),
+		Title:       rule + ": " + shortMessage(r.Extra.Message),
 		Description: r.Extra.Message,
 		Category:    Category,
 		Severity:    semgrepSeverity(r.Extra.Severity),
@@ -216,6 +217,29 @@ func shortRule(id string) string {
 		return id[i+1:]
 	}
 	return id
+}
+
+// shortMessage garde la premiere phrase d'un message semgrep, souvent long de
+// trois ou quatre phrases, pour un titre qui se lit d'un coup d'oeil. Le
+// message entier reste dans la description.
+func shortMessage(s string) string {
+	s = firstLine(s)
+	if i := strings.Index(s, ". "); i > 0 {
+		s = s[:i+1]
+	}
+	const most = 110
+	if len(s) <= most {
+		return s
+	}
+	cut := strings.LastIndexByte(s[:most], ' ')
+	if cut < most/2 {
+		cut = most
+		// Pas de coupe au milieu d'un caractere accentue.
+		for cut > 0 && !utf8.RuneStart(s[cut]) {
+			cut--
+		}
+	}
+	return strings.TrimRight(s[:cut], " ,;:") + "..."
 }
 
 func firstLine(s string) string {

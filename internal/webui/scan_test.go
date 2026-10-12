@@ -9,13 +9,15 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/terrypsv/Quaero/internal/finding"
-	"github.com/terrypsv/Quaero/internal/repo"
 )
 
 // fakeScan est une analyse sans clone ni moteur. Elle annonce ses etapes, puis
@@ -29,11 +31,13 @@ type fakeScan struct {
 
 func newFakeScan() *fakeScan { return &fakeScan{release: make(chan struct{})} }
 
-func (f *fakeScan) scan(ctx context.Context, ref repo.Ref, stage func(string)) (*finding.Report, error) {
+func (f *fakeScan) scan(ctx context.Context, t ScanTarget, stage func(string)) (*finding.Report, error) {
 	f.mu.Lock()
-	f.calls = append(f.calls, ref.String())
+	f.calls = append(f.calls, t.Label())
 	f.mu.Unlock()
-	stage(StageClone)
+	if !t.Local() {
+		stage(StageClone)
+	}
 	stage(StageAnalyse)
 	select {
 	case <-f.release:
@@ -43,8 +47,12 @@ func (f *fakeScan) scan(ctx context.Context, ref repo.Ref, stage func(string)) (
 	if f.err != nil {
 		return nil, f.err
 	}
+	cible := t.Label()
+	if !t.Local() {
+		cible = "github.com/" + cible
+	}
 	rep := finding.NewReport(finding.Tool{Name: "quaero", Version: "test"}, "hote", map[string]any{
-		"mode": "codescan", "cible": "github.com/" + ref.String(), "commit": strings.Repeat("a", 40),
+		"mode": "codescan", "cible": cible, "commit": strings.Repeat("a", 40),
 	})
 	rep.Add(finding.Finding{
 		ID: "QRO-SEMGREP-regle-x-internal-a-go-12", Title: "Requete SQL construite par concatenation",
@@ -127,7 +135,7 @@ func TestAnalyseLanceeEtFinie(t *testing.T) {
 	f := newFakeScan()
 	s, h := scanServer(f.scan)
 
-	rec := post(h, "/api/scan", url.Values{"repo": {"https://github.com/mushorg/cowrie.git"}}, ourOrigin)
+	rec := post(h, "/api/scan", url.Values{"cible": {"https://github.com/mushorg/cowrie.git"}}, ourOrigin)
 	if rec.Code != http.StatusAccepted {
 		t.Fatalf("lancement: code = %d: %s", rec.Code, rec.Body.String())
 	}
@@ -140,7 +148,7 @@ func TestAnalyseLanceeEtFinie(t *testing.T) {
 	}
 
 	// Une seule a la fois: la seconde demande est refusee, pas mise en file.
-	rec = post(h, "/api/scan", url.Values{"repo": {"a/b"}}, ourOrigin)
+	rec = post(h, "/api/scan", url.Values{"cible": {"a/b"}}, ourOrigin)
 	if rec.Code != http.StatusConflict {
 		t.Fatalf("seconde analyse: code = %d, attendu 409", rec.Code)
 	}
@@ -166,16 +174,23 @@ func TestAnalyseLanceeEtFinie(t *testing.T) {
 	}
 }
 
-// L'interface n'analyse que des depots github.com: ni chemin local, ni autre
-// hote, ni rien qui ressemble a une option.
+// Une cible est un depot github.com ou le chemin complet d'un dossier qui
+// existe. Ni autre hote, ni chemin relatif, ni racine, ni fichier, ni rien qui
+// ressemble a une option.
 func TestAnalyseCibleRefusee(t *testing.T) {
 	f := newFakeScan()
 	_, h := scanServer(f.scan)
+	file := filepath.Join(t.TempDir(), "fichier.txt")
+	if err := os.WriteFile(file, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	root := filepath.VolumeName(file) + string(filepath.Separator)
 	for _, target := range []string{
-		"", ".", "..", "/etc", `C:\Users\moi\projet`, "../secret", "gitlab.com/a/b",
+		"", ".", "..", "../secret", "dossier/relatif/en/trop", "gitlab.com/a/b",
 		"file:///etc/passwd", "--upload-pack=x/y", "a/b/c",
+		root, file, filepath.Join(t.TempDir(), "absent"),
 	} {
-		rec := post(h, "/api/scan", url.Values{"repo": {target}}, ourOrigin)
+		rec := post(h, "/api/scan", url.Values{"cible": {target}}, ourOrigin)
 		if rec.Code != http.StatusBadRequest {
 			t.Errorf("%q: code = %d, attendu 400", target, rec.Code)
 		}
@@ -185,10 +200,63 @@ func TestAnalyseCibleRefusee(t *testing.T) {
 	}
 }
 
+// Un dossier de la machine nomme en entier est lu sur place: pas de clone, pas
+// de lien GitHub.
+func TestAnalyseDossierLocal(t *testing.T) {
+	f := newFakeScan()
+	s, h := scanServer(f.scan)
+	dir := t.TempDir()
+	rec := post(h, "/api/scan", url.Values{"cible": {dir + string(filepath.Separator)}}, ourOrigin)
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("code = %d: %s", rec.Code, rec.Body.String())
+	}
+	job := decode(t, rec).Job
+	real, _ := filepath.EvalSymlinks(dir)
+	if !job.Local || job.Repo != real || job.URL != "" || job.Report != "" || job.State != StageAnalyse {
+		t.Errorf("analyse locale: %+v", job)
+	}
+	close(f.release)
+	wait(t, s)
+	if got := decode(t, get(h, "/api/scan")).Job; got.State != stateDone || got.Result == nil {
+		t.Errorf("apres la fin: %+v", got)
+	}
+}
+
+func TestParseTarget(t *testing.T) {
+	if got, err := ParseTarget("  https://github.com/mushorg/cowrie.git "); err != nil || got.Local() || got.Label() != "mushorg/cowrie" {
+		t.Errorf("depot: %+v, %v", got, err)
+	}
+	dir := t.TempDir()
+	real, _ := filepath.EvalSymlinks(dir)
+	if got, err := ParseTarget(dir); err != nil || !got.Local() || got.Label() != real {
+		t.Errorf("dossier: %+v, %v", got, err)
+	}
+	// Un lien vers la racine reste une racine.
+	if runtime.GOOS != "windows" {
+		link := filepath.Join(dir, "vers-racine")
+		if err := os.Symlink("/", link); err == nil {
+			if _, err := ParseTarget(link); err != errRootDir {
+				t.Errorf("lien vers la racine: %v, attendu %v", err, errRootDir)
+			}
+		}
+	}
+	for in, want := range map[string]error{
+		`\\serveur\partage\projet`:                            errNetPath,
+		"//serveur/partage":                                   errNetPath,
+		"pas une cible":                                       errNoTarget,
+		filepath.Join(dir, "absent"):                          errNoDir,
+		filepath.VolumeName(dir) + string(filepath.Separator): errRootDir,
+	} {
+		if _, err := ParseTarget(in); err != want {
+			t.Errorf("%q: %v, attendu %v", in, err, want)
+		}
+	}
+}
+
 func TestAnalyseAnnulee(t *testing.T) {
 	f := newFakeScan()
 	s, h := scanServer(f.scan)
-	job := decode(t, post(h, "/api/scan", url.Values{"repo": {"a/b"}}, ourOrigin)).Job
+	job := decode(t, post(h, "/api/scan", url.Values{"cible": {"a/b"}}, ourOrigin)).Job
 
 	if rec := post(h, "/api/scan/cancel", url.Values{"id": {"autre"}}, ourOrigin); rec.Code != http.StatusConflict {
 		t.Errorf("annulation d'une autre analyse: code = %d, attendu 409", rec.Code)
@@ -207,7 +275,7 @@ func TestAnalyseAnnulee(t *testing.T) {
 		t.Errorf("annulation apres la fin: code = %d, attendu 409", rec.Code)
 	}
 	// Et la suivante peut partir.
-	if rec := post(h, "/api/scan", url.Values{"repo": {"a/c"}}, ourOrigin); rec.Code != http.StatusAccepted {
+	if rec := post(h, "/api/scan", url.Values{"cible": {"a/c"}}, ourOrigin); rec.Code != http.StatusAccepted {
 		t.Errorf("relance apres annulation: code = %d", rec.Code)
 	}
 	s.StopScan(5 * time.Second)
@@ -217,7 +285,7 @@ func TestAnalyseEnEchec(t *testing.T) {
 	f := newFakeScan()
 	f.err = context.DeadlineExceeded
 	s, h := scanServer(f.scan)
-	post(h, "/api/scan", url.Values{"repo": {"a/b"}}, ourOrigin)
+	post(h, "/api/scan", url.Values{"cible": {"a/b"}}, ourOrigin)
 	close(f.release)
 	wait(t, s)
 	got := decode(t, get(h, "/api/scan")).Job
@@ -230,7 +298,7 @@ func TestAnalyseEnEchec(t *testing.T) {
 func TestStopScanAttendLaFin(t *testing.T) {
 	f := newFakeScan()
 	s, h := scanServer(f.scan)
-	post(h, "/api/scan", url.Values{"repo": {"a/b"}}, ourOrigin)
+	post(h, "/api/scan", url.Values{"cible": {"a/b"}}, ourOrigin)
 	if stopped, finished := s.StopScan(5 * time.Second); !stopped || !finished {
 		t.Errorf("StopScan = %v, %v, attendu true, true", stopped, finished)
 	}
@@ -244,7 +312,7 @@ func TestStopScanAttendLaFin(t *testing.T) {
 	}
 	// Une fois l'arret demande, plus aucune analyse ne part: son clone
 	// survivrait au processus.
-	if rec := post(h, "/api/scan", url.Values{"repo": {"a/c"}}, ourOrigin); rec.Code != http.StatusServiceUnavailable {
+	if rec := post(h, "/api/scan", url.Values{"cible": {"a/c"}}, ourOrigin); rec.Code != http.StatusServiceUnavailable {
 		t.Errorf("analyse pendant l'arret: code = %d, attendu 503", rec.Code)
 	}
 	if f.count() != 1 {
@@ -258,7 +326,7 @@ func TestStopScanAttendLaFin(t *testing.T) {
 func TestBrouillonDeSignalement(t *testing.T) {
 	f := newFakeScan()
 	s, h := scanServer(f.scan)
-	job := decode(t, post(h, "/api/scan", url.Values{"repo": {"mushorg/cowrie"}}, ourOrigin)).Job
+	job := decode(t, post(h, "/api/scan", url.Values{"cible": {"mushorg/cowrie"}}, ourOrigin)).Job
 
 	// Pas de brouillon tant que l'analyse tourne.
 	if rec := get(h, "/api/scan/advisory?id="+job.ID+"&finding=x"); rec.Code != http.StatusNotFound {
@@ -320,7 +388,7 @@ func TestAnalyseAutreOrigineRefusee(t *testing.T) {
 	f := newFakeScan()
 	_, h := scanServer(f.scan)
 	for _, origin := range []string{"http://127.0.0.1:8080", "http://evil.example", "null"} {
-		if rec := post(h, "/api/scan", url.Values{"repo": {"a/b"}}, origin); rec.Code != http.StatusForbidden {
+		if rec := post(h, "/api/scan", url.Values{"cible": {"a/b"}}, origin); rec.Code != http.StatusForbidden {
 			t.Errorf("origine %s: code = %d, attendu 403", origin, rec.Code)
 		}
 	}
@@ -329,12 +397,24 @@ func TestAnalyseAutreOrigineRefusee(t *testing.T) {
 	}
 }
 
+// A l'ecoute de tout le reseau, un dossier local est refuse: la page peut
+// venir d'une autre machine.
+func TestDossierLocalRefuseSurToutesInterfaces(t *testing.T) {
+	f := newFakeScan()
+	s := &Server{Client: &fakeSearcher{}, Version: "test", Addr: "0.0.0.0:7777", Token: testToken, Scan: f.scan}
+	h := withSession(s.Handler())
+	rec := post(h, "/api/scan", url.Values{"cible": {t.TempDir()}}, "")
+	if rec.Code != http.StatusBadRequest || f.count() != 0 {
+		t.Errorf("code = %d, %d analyse(s)", rec.Code, f.count())
+	}
+}
+
 func TestAnalyseIndisponible(t *testing.T) {
 	_, h := scanServer(nil)
 	if got := decode(t, get(h, "/api/scan")); got.Available || got.Job != nil {
 		t.Errorf("sans ScanFunc: %+v", got)
 	}
-	if rec := post(h, "/api/scan", url.Values{"repo": {"a/b"}}, ourOrigin); rec.Code != http.StatusNotImplemented {
+	if rec := post(h, "/api/scan", url.Values{"cible": {"a/b"}}, ourOrigin); rec.Code != http.StatusNotImplemented {
 		t.Errorf("code = %d, attendu 501", rec.Code)
 	}
 }

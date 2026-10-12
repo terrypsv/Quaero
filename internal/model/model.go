@@ -209,4 +209,7 @@ type Quota struct {
 	// duration rather than a clock time, so that the page can count down
 	// without trusting that its clock agrees with the server's.
 	ResetIn int `json:"reset_in,omitempty"`
+	// Anonymous dit que Quaero cherche sans jeton, avec le quota reduit que
+	// GitHub accorde aux requetes anonymes.
+	Anonymous bool `json:"anonymous,omitempty"`
 }

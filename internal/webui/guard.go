@@ -25,16 +25,26 @@ import (
 //
 // Chaque requete doit porter le jeton de session, tire au hasard a chaque
 // lancement. Quaero ouvre lui-meme le navigateur sur le lien qui le porte, le
-// jeton passe une fois dans l'adresse puis vit dans un cookie HttpOnly et
-// SameSite=Strict, que le navigateur n'envoie ni a une autre origine ni depuis
-// un autre site. Une page d'un autre site ne peut donc ni lire l'interface ni
-// lui faire lancer quoi que ce soit, y compris un scan.
+// jeton passe une fois dans l'adresse, puis vit a deux endroits.
+//
+// Un cookie HttpOnly et SameSite=Strict ouvre la page et ses polices. Il ne
+// suffit pas pour l'API: un cookie ne distingue pas les ports, le navigateur
+// l'envoie aussi a tout autre serveur de 127.0.0.1, qui pourrait le rejouer.
+//
+// L'API exige le jeton dans l'en-tete X-Quaero-Session. La page le garde dans
+// son stockage local, propre a son origine, port compris: aucun autre serveur
+// de la machine ne le voit passer. Une page d'un autre site ne peut pas non
+// plus poser cet en-tete sans une autorisation CORS que Quaero ne donne
+// jamais. Lire un rapport, chercher ou lancer une analyse demande donc le
+// jeton lui-meme, pas seulement le cookie.
 
 const (
 	// sessionCookie porte le jeton une fois la session ouverte.
 	sessionCookie = "quaero_session"
 	// tokenParam porte le jeton dans le lien d'ouverture.
 	tokenParam = "t"
+	// sessionHeader porte le jeton dans chaque appel a l'API.
+	sessionHeader = "X-Quaero-Session"
 )
 
 //go:embed session.html
@@ -134,13 +144,20 @@ func (g guard) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Ouverture: le jeton arrive dans l'adresse, il est echange contre le
-	// cookie puis retire de l'adresse. La redirection va toujours a la racine,
-	// jamais vers un chemin fourni par la requete.
+	// cookie, et la page le recoit dans le fragment de la redirection, qui ne
+	// repart jamais vers un serveur. Elle le range puis l'efface de l'adresse.
+	// La redirection va toujours a la racine, jamais vers un chemin fourni par
+	// la requete.
 	if t := r.URL.Query().Get(tokenParam); t != "" {
 		if !sameToken(t, g.token) {
 			deny(w, r)
 			return
 		}
+		// Pas de Secure: l'interface ne sert que du HTTP sur la boucle locale,
+		// et un cookie Secure n'y serait pas renvoye. Le cookie ne quitte pas
+		// la machine, HttpOnly et SameSite=Strict le gardent de la page et des
+		// autres sites.
+		// nosemgrep: go.lang.security.audit.net.cookie-missing-secure.cookie-missing-secure
 		http.SetCookie(w, &http.Cookie{
 			Name:     sessionCookie,
 			Value:    g.token,
@@ -148,12 +165,16 @@ func (g guard) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			HttpOnly: true,
 			SameSite: http.SameSiteStrictMode,
 		})
-		http.Redirect(w, r, "/", http.StatusSeeOther)
+		http.Redirect(w, r, "/#"+tokenParam+"="+g.token, http.StatusSeeOther)
 		return
 	}
 
-	c, err := r.Cookie(sessionCookie)
-	if err != nil || !sameToken(c.Value, g.token) {
+	if strings.HasPrefix(r.URL.Path, "/api/") {
+		if !sameToken(r.Header.Get(sessionHeader), g.token) {
+			deny(w, r)
+			return
+		}
+	} else if c, err := r.Cookie(sessionCookie); err != nil || !sameToken(c.Value, g.token) {
 		deny(w, r)
 		return
 	}

@@ -108,9 +108,24 @@ lecture: Quaero analyse, il n'exploite rien.
       commande comme depuis l'interface. Aucun rapport n'est écrit pour un
       scan interrompu
 - [x] Page de session réduite à une ligne
-- [ ] Arrêt de tout l'arbre de processus d'un moteur interrompu. Aujourd'hui
-      seul le moteur est arrêté, ses éventuels sous-processus peuvent finir
-      seuls, l'attente de leurs sorties étant bornée à cinq secondes
+- [x] Arrêt de tout l'arbre de processus d'un moteur ou d'un clone
+      interrompu (groupe de processus, `taskkill /T` sous Windows), effacement
+      du clone réessayé, clones oubliés signalés au démarrage
+- [x] Démarrage sans jeton, recherche limitée par GitHub et signalée dans
+      l'interface, audit inchangé
+- [x] Dépôts privés, par leur dossier ou par leur nom avec un jeton qui peut
+      les lire, tenté seulement après un refus anonyme. Aucun gestionnaire
+      d'identifiants sollicité
+- [x] Dossier local dans l'onglet « auditer », nommé par son chemin complet
+- [x] Constats de deux moteurs sur la même ligne fusionnés, titres semgrep
+      réduits à la première phrase
+- [x] Vulnérabilités publiées regroupées par dépendance, filtres gravité et
+      type
+- [x] Jeton de session exigé en en-tête pour l'API, le cookie n'ouvrant plus
+      que la page. Un autre serveur de 127.0.0.1 qui reçoit le cookie ne peut
+      rien en faire
+- [ ] Mode hors ligne pour les dépôts dont même la liste des dépendances est
+      confidentielle (bases OSV et Go téléchargées à l'avance)
 - [ ] Bac à sable d'exécution pour analyser un dépôt tiers non fiable
 
 ## Discipline (non négociable)

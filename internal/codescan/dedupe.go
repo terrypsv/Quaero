@@ -5,6 +5,7 @@ package codescan
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/terrypsv/Quaero/internal/finding"
 )
@@ -51,6 +52,152 @@ func uniqueIDs(fs []finding.Finding) []finding.Finding {
 		fs[i].ID = next
 	}
 	return fs
+}
+
+// EvidenceMerged porte le titre d'un constat fusionne dans un autre, avec son
+// moteur: rien de ce qu'un moteur a dit ne disparait du rapport.
+const EvidenceMerged = "fusionne"
+
+// mergeSameLine regroupe les constats de code que deux moteurs differents
+// posent sur la meme ligne du meme fichier. semgrep et gosec relevent souvent
+// le meme appel (dangerous-exec-command et G204 sur un exec.Command), sous
+// deux CWE voisines qui ne se recoupent pas: c'est un seul endroit a revoir,
+// donc un seul constat. Le plus grave reste, l'autre s'ajoute a sa provenance
+// et a ses references.
+//
+// Deux regles du meme moteur sur la meme ligne restent deux constats: le
+// moteur les a voulues distinctes. Les constats de dependances et ceux sur le
+// scan lui-meme ne sont pas concernes.
+func mergeSameLine(fs []finding.Finding) []finding.Finding {
+	var kept []finding.Finding
+	index := map[string][]int{} // fichier:ligne -> positions dans kept
+	for _, f := range fs {
+		key := lineKey(f)
+		if key == "" {
+			kept = append(kept, f)
+			continue
+		}
+		// Le premier constat de la ligne qui ne partage aucun moteur avec f
+		// l'accueille: semgrep A, gosec B, semgrep C, gosec D donnent A+B et
+		// C+D, quel que soit l'ordre.
+		pos := -1
+		for _, p := range index[key] {
+			if !sharesEngine(f, kept[p]) {
+				pos = p
+				break
+			}
+		}
+		if pos < 0 {
+			kept = append(kept, f)
+			index[key] = append(index[key], len(kept)-1)
+			continue
+		}
+		a, b := kept[pos], f
+		if better(f, kept[pos]) {
+			a, b = f, kept[pos]
+		}
+		kept[pos] = absorb(a, b)
+	}
+	return kept
+}
+
+// lineKey rend fichier:ligne pour un constat de code sans identifiant public,
+// ou "" s'il ne s'y prete pas.
+func lineKey(f finding.Finding) string {
+	if f.Target == nil || f.Target.Type != "code" || len(publicIDs(f)) > 0 || strings.HasPrefix(f.ID, "QRO-SCAN-") {
+		return ""
+	}
+	id := f.Target.Identifier
+	i := strings.LastIndexByte(id, ':')
+	if i <= 0 || i == len(id)-1 {
+		return ""
+	}
+	for _, c := range id[i+1:] {
+		if c < '0' || c > '9' {
+			return ""
+		}
+	}
+	return id
+}
+
+func enginesOf(f finding.Finding) map[string]bool {
+	out := map[string]bool{}
+	for _, e := range f.Evidence {
+		if e.Type == EvidenceEngine {
+			out[e.Data] = true
+		}
+	}
+	return out
+}
+
+func sharesEngine(a, b finding.Finding) bool {
+	eb := enginesOf(b)
+	for e := range enginesOf(a) {
+		if eb[e] {
+			return true
+		}
+	}
+	return false
+}
+
+// absorb garde a et y rattache ce que b apporte: ses moteurs, son titre, sa
+// description, ses liens, ses references, et son extrait de code si a n'en a
+// pas.
+func absorb(a, b finding.Finding) finding.Finding {
+	if d := strings.TrimSpace(b.Description); d != "" && !strings.Contains(a.Description, d) {
+		if a.Description != "" {
+			a.Description += "\n\n"
+		}
+		a.Description += d
+	}
+	a.Evidence = mergeEngines(a.Evidence, b.Evidence)
+	engines := make([]string, 0, 2)
+	for _, e := range b.Evidence {
+		if e.Type == EvidenceEngine {
+			engines = append(engines, e.Data)
+		}
+	}
+	note := b.Title
+	if len(engines) > 0 {
+		note += " (" + strings.Join(engines, ", ") + ")"
+	}
+	a.Evidence = append(a.Evidence, finding.Evidence{Type: EvidenceMerged, Data: note})
+	hasCode := false
+	for _, e := range a.Evidence {
+		if e.Type == "code" {
+			hasCode = true
+		}
+	}
+	urls := map[string]bool{}
+	for _, e := range a.Evidence {
+		if e.Type == "url" {
+			urls[e.Data] = true
+		}
+	}
+	for _, e := range b.Evidence {
+		if e.Type == "url" && !urls[e.Data] {
+			a.Evidence = append(a.Evidence, e)
+			urls[e.Data] = true
+			continue
+		}
+		if (e.Type == "code" && !hasCode) || e.Type == "rule" {
+			a.Evidence = append(a.Evidence, e)
+			if e.Type == "code" {
+				hasCode = true
+			}
+		}
+	}
+	seen := map[string]bool{}
+	for _, r := range a.References {
+		seen[r.Framework+"/"+r.ID] = true
+	}
+	for _, r := range b.References {
+		if !seen[r.Framework+"/"+r.ID] {
+			a.References = append(a.References, r)
+			seen[r.Framework+"/"+r.ID] = true
+		}
+	}
+	return a
 }
 
 // dedupe regroupe les constats qui decrivent la meme vulnerabilite connue,

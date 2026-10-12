@@ -48,11 +48,13 @@ const (
 	testToken = "jeton-de-session-de-test"
 )
 
-// withSession sert h comme le ferait un navigateur dont la session est ouverte.
+// withSession sert h comme le ferait la page ouverte: le cookie, et le jeton en
+// en-tete pour l'API.
 func withSession(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		r.Host = testAddr
 		r.AddCookie(&http.Cookie{Name: sessionCookie, Value: testToken})
+		r.Header.Set(sessionHeader, testToken)
 		h.ServeHTTP(w, r)
 	})
 }

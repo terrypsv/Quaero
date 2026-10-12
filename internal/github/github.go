@@ -34,13 +34,6 @@ const (
 	maxResults = 1000
 )
 
-// ErrNoToken is returned when no credential is available.
-//
-// Anonymous search is capped at ten requests a minute, two deep searches.
-// Rather than half-work and fail confusingly on the third query, the client
-// refuses to start without a token.
-var ErrNoToken = fmt.Errorf("aucun jeton GitHub: definir GITHUB_TOKEN ou GH_TOKEN")
-
 // Client queries the GitHub search API.
 type Client struct {
 	HTTP    *http.Client
@@ -65,11 +58,14 @@ type RateLimit struct {
 // accepted because gh writes GH_TOKEN and most CI systems write GITHUB_TOKEN;
 // requiring one specific name would be a trap for whoever already has the
 // other set.
+//
+// Sans jeton, le client fonctionne quand meme, en anonyme: GitHub limite alors
+// la recherche a dix requetes par minute. Chacun utilise son propre jeton, rien
+// n'est lie au compte de l'auteur de Quaero, et un essai ne doit pas commencer
+// par une creation de jeton. L'audit, lui, n'en a pas besoin pour un depot
+// public.
 func New() (*Client, error) {
 	token, source := resolveToken()
-	if token == "" {
-		return nil, ErrNoToken
-	}
 	return &Client{
 		HTTP:    &http.Client{Timeout: 20 * time.Second},
 		Token:   token,
@@ -86,6 +82,14 @@ const (
 	SourceGHToken     = "GH_TOKEN"     // #nosec G101 -- nom de variable, aucun secret
 	SourceFile        = "fichier"
 )
+
+// Anonymous dit si le client interroge GitHub sans jeton.
+func (c *Client) Anonymous() bool { return c.Token == "" }
+
+// ResolveToken rend le jeton de l'utilisateur et l'endroit ou il a ete lu, ou
+// deux chaines vides. Il sert aussi a cloner un depot prive que ce jeton peut
+// lire.
+func ResolveToken() (token, source string) { return resolveToken() }
 
 // resolveToken returns the first credential found and where it came from.
 func resolveToken() (token, source string) {
@@ -224,7 +228,9 @@ func (c *Client) newRequest(ctx context.Context, endpoint string) (*http.Request
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Authorization", "Bearer "+c.Token)
+	if c.Token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.Token)
+	}
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
 	req.Header.Set("User-Agent", "quaero")
@@ -283,10 +289,13 @@ func apiError(status int, payload searchResponse, rate RateLimit, source string)
 	switch status {
 	case http.StatusUnauthorized:
 		return fmt.Errorf("jeton GitHub refuse (%s): %s", detail, refusedTokenHint(source))
-	case http.StatusForbidden:
+	case http.StatusForbidden, http.StatusTooManyRequests:
 		if rate.Remaining == 0 {
-			return fmt.Errorf("quota GitHub epuise, reinitialisation a %s",
-				rate.ResetAt.Local().Format("15:04:05"))
+			msg := fmt.Sprintf("quota GitHub epuise, reinitialisation a %s", rate.ResetAt.Local().Format("15:04:05"))
+			if source == "" {
+				msg += ". Sans jeton, GitHub limite la recherche a 10 requetes par minute: quaero -save-token <jeton> pour passer a 30"
+			}
+			return fmt.Errorf("%s", msg)
 		}
 		return fmt.Errorf("acces refuse par GitHub: %s", detail)
 	case http.StatusUnprocessableEntity:

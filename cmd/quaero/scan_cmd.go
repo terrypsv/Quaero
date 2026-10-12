@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/terrypsv/Quaero/internal/codescan"
+	"github.com/terrypsv/Quaero/internal/github"
 	"github.com/terrypsv/Quaero/internal/repo"
 )
 
@@ -41,7 +42,8 @@ func resolveScanTarget(ctx context.Context, target string) (dir, label string, u
 			"%q n'est ni un dossier local ni une reference de depot GitHub (owner/repo ou une URL github.com)", target)
 	}
 	fmt.Fprintf(os.Stderr, "clone de %s...\n", ref)
-	dir, cleanup, err = cloneRepo(ctx, ref)
+	token, _ := github.ResolveToken()
+	dir, cleanup, err = cloneRepo(ctx, ref, token)
 	if err != nil {
 		return "", "", false, func() {}, err
 	}
@@ -76,7 +78,7 @@ func selectScanners(dir string) []codescan.Scanner {
 func runScan(target, jsonPath string, timeout time.Duration) (int, error) {
 	// Ctrl+C arrete les moteurs puis laisse le nettoyage se faire: sans cela,
 	// le processus s'arreterait net et le clone resterait dans le temporaire.
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	ctx, stop := signal.NotifyContext(context.Background(), stopSignals...)
 	defer stop()
 	// Apres le premier Ctrl+C, le second quitte tout de suite.
 	go func() {
@@ -156,6 +158,11 @@ func runScan(target, jsonPath string, timeout time.Duration) (int, error) {
 }
 
 var errInterrupted = errors.New("scan interrompu, aucun rapport ecrit")
+
+// stopSignals arretent Quaero proprement: Ctrl+C, arret demande, terminal
+// ferme. Les moteurs vivent dans leur propre groupe de processus (proctree):
+// sans ce nettoyage, ils survivraient a Quaero avec le clone ouvert.
+var stopSignals = []os.Signal{os.Interrupt, syscall.SIGTERM, syscall.SIGHUP, syscall.SIGQUIT}
 
 // durationsLine resume le temps passe par chaque moteur, pour voir ou part la
 // duree d'un scan. Vide si aucun moteur n'a tourne.

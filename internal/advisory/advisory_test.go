@@ -135,3 +135,19 @@ func TestBrouillonSansContexte(t *testing.T) {
 		t.Errorf("contexte invente:\n%s", d)
 	}
 }
+
+// Un dossier local analyse ne donne pas son chemin au brouillon: il decrit la
+// machine de l'operateur, pas le depot du mainteneur.
+func TestBrouillonDossierLocal(t *testing.T) {
+	rep := finding.NewReport(finding.Tool{Name: "quaero", Version: "test"}, "h", map[string]any{"cible": `C:\Users\moi\projet-prive`})
+	f := finding.Finding{ID: "QRO-GOSEC-G104-a-go-1", Title: "G104", Severity: finding.SeverityLow, Status: finding.StatusReview,
+		Evidence: []finding.Evidence{{Type: "fusionne", Data: "autre titre (semgrep)"}}}
+	rep.Add(f)
+	d := Draft(rep, f)
+	if strings.Contains(d, "projet-prive") || !strings.Contains(d, "TO COMPLETE (scanned from a local copy)") {
+		t.Errorf("chemin local dans le brouillon:\n%s", d)
+	}
+	if !strings.Contains(d, "Also reported on the same line as: autre titre (semgrep).") {
+		t.Errorf("fusion absente du brouillon:\n%s", d)
+	}
+}

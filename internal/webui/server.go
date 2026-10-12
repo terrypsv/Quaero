@@ -175,7 +175,16 @@ func (s *Server) handleQuota(w http.ResponseWriter, r *http.Request) {
 			rate = fresh
 		}
 	}
-	writeJSON(w, http.StatusOK, quotaOf(rate, time.Now()))
+	writeJSON(w, http.StatusOK, s.quota(rate))
+}
+
+// quota dit le budget a la page, et si Quaero cherche sans jeton.
+func (s *Server) quota(rate github.RateLimit) model.Quota {
+	q := quotaOf(rate, time.Now())
+	if a, ok := s.Client.(interface{ Anonymous() bool }); ok && a.Anonymous() {
+		q.Anonymous = true
+	}
+	return q
 }
 
 // quotaOf turns a rate limit into what the page displays.
@@ -534,7 +543,7 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 	// The budget left is always reported, the page keeps it in view. The gap
 	// between matches and reachable results is explained by the page too,
 	// next to the criteria that close it.
-	result.Quota = quotaOf(rate, time.Now())
+	result.Quota = s.quota(rate)
 
 	if len(relaxed) > 0 && total > 0 {
 		result.Note = intent.Describe(relaxed)
