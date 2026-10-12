@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/quaero.png" alt="Quaero. Trouver un dépôt, savoir s'il tient, auditer son code." width="100%">
+  <img src="assets/quaero.svg" alt="Quaero. Trouver un dépôt, savoir s'il tient, auditer son code." width="100%">
 </p>
 
 Quaero aide à choisir du code open source et à le rendre plus sûr. Tu décris
@@ -87,5 +87,4 @@ outils d'analyse et la protection de l'interface. La
 
 ## Licence
 
-Logiciel propriétaire, tous droits réservés, voir [LICENSE](LICENSE). Quaero
-fait partie de la suite Steelveil.
+Logiciel propriétaire, tous droits réservés, voir [LICENSE](LICENSE).
