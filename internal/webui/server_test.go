@@ -337,3 +337,21 @@ func TestVersionEndpoint(t *testing.T) {
 		t.Errorf("version absente: %s", rec.Body.String())
 	}
 }
+
+// En francais, les mots partent tels qu'ils ont ete tapes, pour trouver les
+// projets decrits en francais. La portee est rendue a l'interface.
+func TestRechercheEnFrancais(t *testing.T) {
+	f := &fakeSearcher{total: 1, repos: []model.Repo{{FullName: "a/b", Name: "b"}}}
+	rec := httptest.NewRecorder()
+	newServer(f).ServeHTTP(rec, httptest.NewRequest(http.MethodGet,
+		quick("/api/search?q=outil+de+chiffrement+en+go&scope=francais"), nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("code = %d: %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(f.lastQuery, "chiffrement") || strings.Contains(f.lastQuery, "encryption") {
+		t.Errorf("requete %q, attendu le mot francais", f.lastQuery)
+	}
+	if !strings.Contains(rec.Body.String(), `"scope":"francais"`) {
+		t.Error("la portee francaise doit etre rendue")
+	}
+}

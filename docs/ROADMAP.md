@@ -15,6 +15,14 @@
       polices embarquées sous licence OFL
 - [x] Interface allégée, une chose à la fois, options et raisons du rang
       repliées
+- [x] Phrase d'accueil, critères compris affichés un par un avec le mot
+      d'origine, mots laissés de côté expliqués, exemples tirés de la sécurité
+- [x] Langue des dépôts au choix (anglais, français, toutes langues), le
+      français cherche les mots tels que tapés
+- [x] Vocabulaire de la sécurité étendu, expressions connues lues avant les
+      mots de fraîcheur ("active directory")
+- [x] Ouverture automatique dans le navigateur, `-no-browser` pour s'en passer
+- [x] Archivo pour lire, JetBrains Mono pour recopier
 - [ ] Validation d'usage réel sur des recherches quotidiennes
 - [ ] Release multi-plateforme
 

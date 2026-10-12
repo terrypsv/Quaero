@@ -77,6 +77,11 @@ var stopWords = map[string]bool{
 	"in": true, "on": true, "with": true, "and": true, "or": true, "i": true,
 	"want": true, "need": true, "find": true, "looking": true, "some": true,
 	"est": true, "sont": true, "ce": true, "cette": true, "son": true,
+	"sous": true, "chez": true, "vers": true, "entre": true, "contre": true,
+	"tres": true, "plus": true, "moins": true, "comme": true, "aussi": true,
+	"mon": true, "ma": true, "mes": true, "sa": true, "ses": true,
+	"notre": true, "nos": true, "votre": true, "vos": true, "leur": true, "leurs": true,
+	"il": true, "elle": true, "nous": true, "vous": true, "qu": true,
 }
 
 // Phrases that ask for recency, mapped to a window in days. Longest first so
@@ -142,6 +147,27 @@ func Read(phrase string) model.Intent {
 
 	rd := newReader(phrase)
 
+	// Multi-word expressions are collapsed first. Translating them word by
+	// word would produce noise: "base de donnees" becomes "database data",
+	// and "data" alone drags in every repository that mentions it. They come
+	// before the facet phrases too: "active directory" is a product, not a
+	// request for recently active projects.
+	var collapsed []string
+	for _, m := range multiWord {
+		found := false
+		for {
+			start, end, ok := rd.find(m.phrase)
+			if !ok {
+				break
+			}
+			found = true
+			rd.take(start, end, model.RoleTerm, m.term)
+		}
+		if found {
+			collapsed = append(collapsed, m.term)
+		}
+	}
+
 	// Explicit star floor beats the vague popularity words.
 	for _, m := range starFloorRe.FindAllStringSubmatchIndex(rd.rest, -1) {
 		if !rd.startsWord(m[0]) {
@@ -189,25 +215,6 @@ func Read(phrase string) model.Intent {
 			out.ExcludeArchived = false
 			out.Explain = append(out.Explain, "depots archives inclus")
 			rd.take(start, end, model.RoleArchived, "")
-		}
-	}
-
-	// Multi-word expressions are collapsed first. Translating them word by
-	// word would produce noise: "base de donnees" becomes "database data",
-	// and "data" alone drags in every repository that mentions it.
-	var collapsed []string
-	for _, m := range multiWord {
-		found := false
-		for {
-			start, end, ok := rd.find(m.phrase)
-			if !ok {
-				break
-			}
-			found = true
-			rd.take(start, end, model.RoleTerm, m.term)
-		}
-		if found {
-			collapsed = append(collapsed, m.term)
 		}
 	}
 
@@ -350,6 +357,9 @@ func normalise(s string) string {
 		'ô': 'o', 'ö': 'o',
 		'ù': 'u', 'û': 'u', 'ü': 'u',
 		'ç': 'c',
+		// Apostrophe typographique: "d’intrusion" et "d'intrusion" sont le
+		// meme mot selon le clavier.
+		'\u2019': '\'',
 	}
 	var b strings.Builder
 	for _, r := range s {

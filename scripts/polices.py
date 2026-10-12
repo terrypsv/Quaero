@@ -8,10 +8,9 @@ toute ressource exterieure. Les polices sont donc embarquees dans le binaire,
 et ce script est la seule etape qui touche le reseau: il tourne une fois, a la
 main, et son resultat est versionne.
 
-Trois fichiers, tous sous licence SIL OFL 1.1:
-  jetbrains-mono.woff2   interface, graisses 400 a 800, jeu latin
-  syne.woff2             grands titres, graisses 700 et 800, jeu latin
-  archivo-quaero.woff2   logotype, Archivo large et extra-gras, lettres de "quaero" seulement
+Deux fichiers, sous licence SIL OFL 1.1:
+  archivo.woff2          texte, titres et logotype, chasses 100 a 125, graisses 400 a 800, jeu latin
+  jetbrains-mono.woff2   requetes et chemins, graisses 400 a 700, jeu latin
 
 Usage, depuis la racine du depot:
   python scripts/polices.py
@@ -37,15 +36,13 @@ USER_AGENT = (
 
 FONTS = [
     # (fichier, famille et axes au format css2, texte a garder ou None, dossier ofl)
-    ("jetbrains-mono.woff2", "JetBrains Mono:wght@400..800", None, "jetbrainsmono"),
-    ("syne.woff2", "Syne:wght@700..800", None, "syne"),
-    ("archivo-quaero.woff2", "Archivo:wdth,wght@125,800", "quaero", "archivo"),
+    ("archivo.woff2", "Archivo:wdth,wght@100..125,400..800", None, "archivo"),
+    ("jetbrains-mono.woff2", "JetBrains Mono:wght@400..700", None, "jetbrainsmono"),
 ]
 
 LICENSES = {
-    "jetbrainsmono": "OFL-JetBrainsMono.txt",
-    "syne": "OFL-Syne.txt",
     "archivo": "OFL-Archivo.txt",
+    "jetbrainsmono": "OFL-JetBrainsMono.txt",
 }
 
 FACE = re.compile(r"(?:/\*\s*([\w-]+)\s*\*/\s*)?@font-face\s*\{([^}]*)\}")

@@ -12,7 +12,7 @@ import (
 	"testing"
 )
 
-var polices = []string{"jetbrains-mono.woff2", "syne.woff2", "archivo-quaero.woff2"}
+var polices = []string{"archivo.woff2", "jetbrains-mono.woff2"}
 
 // Les polices sont produites par scripts/polices.py puis versionnees. Un
 // binaire sans elles s'afficherait avec celles du systeme, sans que rien ne
@@ -28,7 +28,7 @@ func TestPolicesEmbarquees(t *testing.T) {
 			t.Errorf("%s n'est pas un fichier woff2", name)
 		}
 	}
-	for _, lic := range []string{"OFL-JetBrainsMono.txt", "OFL-Syne.txt", "OFL-Archivo.txt"} {
+	for _, lic := range []string{"OFL-Archivo.txt", "OFL-JetBrainsMono.txt"} {
 		if _, err := fontFiles.ReadFile("fonts/" + lic); err != nil {
 			t.Errorf("licence %s absente: les polices OFL voyagent avec leur licence", lic)
 		}
@@ -50,7 +50,7 @@ func TestPoliceServie(t *testing.T) {
 // controle, ni rien en dehors du dossier.
 func TestPoliceRefusee(t *testing.T) {
 	for _, p := range []string{
-		"/fonts/", "/fonts/OFL-Syne.txt", "/fonts/SHA256SUMS", "/fonts/LISEZMOI.md",
+		"/fonts/", "/fonts/OFL-Archivo.txt", "/fonts/SHA256SUMS", "/fonts/LISEZMOI.md",
 		"/fonts/inconnue.woff2", "/fonts/sous/jetbrains-mono.woff2", "/fonts/..%2fserver.go",
 	} {
 		rec := httptest.NewRecorder()

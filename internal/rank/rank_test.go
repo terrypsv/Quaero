@@ -4,6 +4,7 @@
 package rank
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -206,4 +207,16 @@ func indexOf(h, n string) int {
 		}
 	}
 	return -1
+}
+
+// Une raison doit nommer le mot qui a compte: "yaml dans le nom" explique un
+// rang, un simple compte oblige a deviner lequel.
+func TestPourquoiNommeLesTermes(t *testing.T) {
+	r := repo("yamlfmt", 100, 1)
+	r.Description = "format yaml files"
+	out := Score([]model.Repo{r}, model.Intent{Terms: []string{"yaml"}}, SortRelevance)
+	why := strings.Join(out[0].Why, " | ")
+	if !strings.Contains(why, "« yaml » dans le nom") || !strings.Contains(why, "« yaml » dans la description") {
+		t.Errorf("raisons = %q", why)
+	}
 }

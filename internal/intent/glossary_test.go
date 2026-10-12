@@ -84,7 +84,8 @@ func TestMultiWordExpressions(t *testing.T) {
 		"un client de base de donnees":        "database",
 		"une lib d apprentissage automatique": "machine-learning",
 		"des tests bout en bout":              "end-to-end",
-		"un gestionnaire de mot de passe":     "password",
+		"un gestionnaire de mot de passe":     "password-manager",
+		"changer de mot de passe":             "password",
 		"traitement en temps reel":            "realtime",
 	}
 	for phrase, want := range cases {
@@ -111,5 +112,61 @@ func TestTermsAreCappedAtFour(t *testing.T) {
 	in := Read("parser yaml json toml xml ini csv")
 	if len(in.Terms) > 4 {
 		t.Errorf("termes = %d, want au plus 4: %v", len(in.Terms), in.Terms)
+	}
+}
+
+// Le vocabulaire de la securite est le domaine de travail de Quaero: chaque
+// expression doit tomber sur le terme que les depots emploient vraiment.
+func TestVocabulaireCyber(t *testing.T) {
+	cases := map[string]string{
+		"scanner de ports en go":                   "port-scanner",
+		"détection d'intrusion réseau":             "ids",
+		"détection d’intrusion réseau":             "ids",
+		"un pot de miel ssh":                       "honeypot",
+		"analyse de logiciels malveillants":        "malware-analysis",
+		"outil de rétro-ingénierie":                "reverse-engineering",
+		"rétro-ingénierie de micrologiciel":        "firmware",
+		"forensique de la mémoire":                 "forensics",
+		"gestionnaire de mots de passe":            "password-manager",
+		"capture de paquets en rust":               "pcap",
+		"pare-feu applicatif web":                  "waf",
+		"réponse aux incidents":                    "incident-response",
+		"scanner de vulnérabilités web":            "vulnerability",
+		"durcissement linux":                       "hardening",
+		"radio logicielle":                         "sdr",
+		"rançongiciel":                             "ransomware",
+		"tests d'intrusion d'applications mobiles": "pentest",
+	}
+	for phrase, want := range cases {
+		t.Run(phrase, func(t *testing.T) {
+			if got := Read(phrase).Terms; !hasTerm(got, want) {
+				t.Errorf("terme %q absent de %v", want, got)
+			}
+		})
+	}
+}
+
+// Une expression qui en contient une autre est lue en entier: le gestionnaire
+// de mots de passe n'est pas un mot de passe.
+func TestExpressionLaPlusLongueGagne(t *testing.T) {
+	in := Read("gestionnaire de mots de passe")
+	if hasTerm(in.Terms, "password") || !hasTerm(in.Terms, "password-manager") {
+		t.Errorf("termes = %v, attendu password-manager seul", in.Terms)
+	}
+}
+
+// Une expression connue passe avant les mots de fraicheur ou de popularite
+// qu'elle contient: "active directory" est un produit, pas une demande de
+// projets actifs.
+func TestExpressionAvantFacettes(t *testing.T) {
+	in := Read("énumération active directory")
+	if in.PushedWithinDays != 0 {
+		t.Errorf("active lu comme une recence: %d jours", in.PushedWithinDays)
+	}
+	if !hasTerm(in.Terms, "active-directory") || !hasTerm(in.Terms, "enumeration") {
+		t.Errorf("termes = %v", in.Terms)
+	}
+	if got := Read("règles yara").Terms; !hasTerm(got, "yara") || hasTerm(got, "regles") {
+		t.Errorf("règles yara: termes = %v", got)
 	}
 }
