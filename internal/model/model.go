@@ -93,6 +93,32 @@ type Intent struct {
 	// Explain lists the facets that were understood, so the user can see how
 	// their sentence was read and correct it if it was read wrong.
 	Explain []string `json:"explain,omitempty"`
+	// Reading is the phrase cut into the pieces the reading acted on, in
+	// order. Joining every Text gives the phrase back exactly as typed, so an
+	// interface can show each word with what became of it.
+	Reading []Segment `json:"reading,omitempty"`
+}
+
+// Segment roles. A separator between two words carries no role.
+const (
+	RoleTerm       = "terme"     // mot cherche, eventuellement traduit
+	RoleLanguage   = "langage"   // devenu language:
+	RoleStars      = "etoiles"   // devenu stars:>=
+	RoleRecency    = "recence"   // devenu pushed:>=
+	RoleForks      = "forks"     // forks inclus
+	RoleArchived   = "archives"  // depots archives inclus
+	RoleGeneric    = "generique" // mot generique ecarte
+	RoleEmpty      = "vide"      // mot vide, sans valeur de recherche
+	RoleOverLimits = "limite"    // terme au-dela des quatre gardes
+)
+
+// Segment is one piece of the phrase as typed.
+type Segment struct {
+	Text string `json:"text"`
+	Role string `json:"role,omitempty"`
+	// Value is what the piece produced: the term actually searched (translated
+	// when it was), the language name, the star floor or the window in days.
+	Value string `json:"value,omitempty"`
 }
 
 // Result is what the web layer renders.

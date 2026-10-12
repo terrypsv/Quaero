@@ -3,6 +3,10 @@
 ## v0.1.0 - recherche par intention
 
 - [x] Lecture d'une phrase vers des facettes GitHub, avec restitution
+- [x] Lecture mot à mot, chaque mot rendu tel que tapé avec ce qu'il a donné
+      (terme, langage, étoiles, récence, mot générique ou vide)
+- [x] Formes fléchies sans reste ("maintenues" ne laisse plus "es") et mots
+      reconnus depuis leur début ("inactif" n'est plus lu comme "actif")
 - [x] Client de l'API de recherche, quota exposé
 - [x] Classement par pertinence, nom prioritaire sur popularité
 - [x] Verdict de santé par dépôt, expliqué
