@@ -10,7 +10,10 @@ import (
 	"errors"
 	"math"
 	"net/http"
+	"os"
+	"path/filepath"
 	"regexp"
+	"strings"
 	"sync"
 	"time"
 
@@ -19,12 +22,15 @@ import (
 	"github.com/terrypsv/Quaero/internal/repo"
 )
 
-// L'onglet audit lance l'analyse d'un depot public nomme a la main. Les
-// garde-fous sont ceux de la ligne de commande, plus ceux d'une interface web:
+// L'onglet audit lance l'analyse d'une cible nommee a la main. Les garde-fous
+// sont ceux de la ligne de commande, plus ceux d'une interface web:
 //
-//   - la cible est un depot github.com et rien d'autre. L'interface n'analyse
-//     jamais un chemin local: ce serait offrir a une requete le choix d'un
-//     dossier de la machine;
+//   - la cible est un depot github.com, clone puis efface, ou le chemin complet
+//     d'un dossier de la machine, lu sur place. Un dossier se nomme en entier:
+//     un chemin relatif dependrait du dossier ou Quaero a ete lance, et une
+//     racine de disque n'est pas un projet;
+//   - seul le detenteur de la session peut nommer une cible: le cookie de
+//     session et le controle d'origine (guard.go) ecartent toute autre page;
 //   - une seule analyse a la fois, annulable. Une seconde demande est refusee,
 //     pas mise en file: lancer n'est jamais un effet de bord;
 //   - les routes qui lancent ou annulent n'acceptent que POST, derriere le
@@ -46,14 +52,96 @@ const (
 	stateCanceling = "annulation"
 )
 
-// ScanFunc clone et analyse le depot ref, en annoncant chaque etape par stage.
-// Elle s'arrete des que ctx est annule et ne laisse rien sur le disque.
-type ScanFunc func(ctx context.Context, ref repo.Ref, stage func(string)) (*finding.Report, error)
+// ScanTarget est ce que l'on analyse: un depot GitHub, ou un dossier local.
+type ScanTarget struct {
+	// Repo est le depot GitHub a cloner, quand Dir est vide.
+	Repo repo.Ref
+	// Dir est le chemin complet d'un dossier de la machine, lu sur place.
+	Dir string
+}
+
+// Local dit si la cible est un dossier de la machine.
+func (t ScanTarget) Local() bool { return t.Dir != "" }
+
+// Label nomme la cible pour la page et le rapport.
+func (t ScanTarget) Label() string {
+	if t.Local() {
+		return t.Dir
+	}
+	return t.Repo.String()
+}
+
+// Erreurs de lecture d'une cible, dites a la page telles quelles.
+var (
+	errNoTarget = errors.New("ni un depot github (owner/repo ou URL github.com), ni le chemin complet d'un dossier")
+	errNoDir    = errors.New("dossier introuvable")
+	errNotDir   = errors.New("ce chemin n'est pas un dossier")
+	errRootDir  = errors.New("une racine de disque ne s'analyse pas, nommer le dossier du projet")
+	errNetPath  = errors.New("un chemin reseau ne s'analyse pas d'ici, copier le projet sur la machine")
+	errLocalOff = errors.New("dossier local refuse: Quaero ecoute sur toutes les interfaces")
+)
+
+// targetErrorCode nomme une erreur de cible pour la page, qui la dit avec ses
+// propres mots.
+func targetErrorCode(err error) string {
+	switch err {
+	case errNoDir:
+		return "dossier_absent"
+	case errNotDir:
+		return "pas_un_dossier"
+	case errRootDir:
+		return "racine"
+	case errNetPath:
+		return "reseau"
+	case errLocalOff:
+		return "local_ferme"
+	}
+	return "cible"
+}
+
+// ParseTarget lit ce qui est saisi dans l'onglet audit: un chemin complet est
+// un dossier local, le reste doit etre une reference de depot GitHub.
+//
+// Un chemin reseau (\\serveur\partage) est refuse avant tout acces: sous
+// Windows, le simple fait de le lire enverrait l'identite de l'utilisateur a
+// ce serveur. Les liens symboliques sont resolus avant de juger, pour qu'un
+// lien vers la racine ne passe pas pour un dossier de projet.
+func ParseTarget(raw string) (ScanTarget, error) {
+	raw = strings.TrimSpace(raw)
+	if strings.HasPrefix(raw, `\\`) || strings.HasPrefix(raw, "//") {
+		return ScanTarget{}, errNetPath
+	}
+	if filepath.IsAbs(raw) {
+		dir, err := filepath.EvalSymlinks(filepath.Clean(raw))
+		if err != nil {
+			return ScanTarget{}, errNoDir
+		}
+		if filepath.Dir(dir) == dir {
+			return ScanTarget{}, errRootDir
+		}
+		info, err := os.Stat(dir)
+		if err != nil {
+			return ScanTarget{}, errNoDir
+		}
+		if !info.IsDir() {
+			return ScanTarget{}, errNotDir
+		}
+		return ScanTarget{Dir: dir}, nil
+	}
+	if ref, ok := repo.Parse(raw); ok {
+		return ScanTarget{Repo: ref}, nil
+	}
+	return ScanTarget{}, errNoTarget
+}
+
+// ScanFunc analyse la cible t, en annoncant chaque etape par stage. Elle
+// s'arrete des que ctx est annule et ne laisse aucun clone sur le disque.
+type ScanFunc func(ctx context.Context, t ScanTarget, stage func(string)) (*finding.Report, error)
 
 // scanJob est une analyse, en cours ou terminee.
 type scanJob struct {
 	id        string
-	ref       repo.Ref
+	target    ScanTarget
 	state     string
 	canceling bool
 	started   time.Time
@@ -80,10 +168,13 @@ var errClosing = errors.New("quaero s'arrete")
 
 // scanView est ce que la page recoit d'une analyse.
 type scanView struct {
-	ID      string  `json:"id"`
-	Repo    string  `json:"repo"`
-	URL     string  `json:"url"`
-	Report  string  `json:"report_url"`
+	ID string `json:"id"`
+	// Repo nomme la cible: owner/repo, ou le chemin du dossier.
+	Repo  string `json:"repo"`
+	Local bool   `json:"local,omitempty"`
+	// URL et Report ne valent que pour un depot GitHub.
+	URL     string  `json:"url,omitempty"`
+	Report  string  `json:"report_url,omitempty"`
 	State   string  `json:"state"`
 	Running bool    `json:"running"`
 	Elapsed float64 `json:"elapsed_s"`
@@ -103,13 +194,16 @@ func (j *scanJob) view(now time.Time) scanView {
 	}
 	v := scanView{
 		ID:      j.id,
-		Repo:    j.ref.String(),
-		URL:     j.ref.URL(),
-		Report:  j.ref.ReportURL(),
+		Repo:    j.target.Label(),
+		Local:   j.target.Local(),
 		State:   j.state,
 		Running: j.running(),
 		Elapsed: math.Round(end.Sub(j.started).Seconds()*10) / 10,
 		Error:   j.err,
+	}
+	if !j.target.Local() {
+		v.URL = j.target.Repo.URL()
+		v.Report = j.target.Repo.ReportURL()
 	}
 	if j.running() && j.canceling {
 		v.State = stateCanceling
@@ -126,7 +220,7 @@ func (j *scanJob) view(now time.Time) scanView {
 
 // start lance une analyse si aucune ne tourne. Elle rend l'analyse lancee, ou
 // celle qui tourne deja et false, ou errClosing si Quaero s'arrete.
-func (s *scanJobs) start(scan ScanFunc, ref repo.Ref) (*scanJob, bool, error) {
+func (s *scanJobs) start(scan ScanFunc, t ScanTarget) (*scanJob, bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.closed {
@@ -138,10 +232,14 @@ func (s *scanJobs) start(scan ScanFunc, ref repo.Ref) (*scanJob, bool, error) {
 	// L'analyse ne depend pas de la requete qui l'a lancee: fermer l'onglet ne
 	// l'arrete pas, le bouton annuler si.
 	ctx, cancel := context.WithCancel(context.Background())
+	first := StageClone
+	if t.Local() {
+		first = StageAnalyse
+	}
 	job := &scanJob{
 		id:      newJobID(),
-		ref:     ref,
-		state:   StageClone,
+		target:  t,
+		state:   first,
 		started: time.Now(),
 		cancel:  cancel,
 		done:    make(chan struct{}),
@@ -149,7 +247,7 @@ func (s *scanJobs) start(scan ScanFunc, ref repo.Ref) (*scanJob, bool, error) {
 	s.cur = job
 	go func() {
 		defer cancel()
-		rep, err := scan(ctx, ref, func(stage string) { s.stage(job, stage) })
+		rep, err := scan(ctx, t, func(stage string) { s.stage(job, stage) })
 		s.finish(job, rep, err, ctx.Err())
 	}()
 	return job, true, nil
@@ -273,12 +371,17 @@ func (s *Server) handleScan(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "requete illisible"})
 			return
 		}
-		ref, ok := repo.Parse(r.PostForm.Get("repo"))
-		if !ok {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "pas une reference de depot github (owner/repo ou URL github.com)"})
+		target, err := ParseTarget(r.PostForm.Get("cible"))
+		// A l'ecoute de tout le reseau, la page peut etre ouverte d'une autre
+		// machine: un dossier de celle-ci n'a pas a lui etre lu.
+		if err == nil && target.Local() && ListensEverywhere(s.Addr) {
+			err = errLocalOff
+		}
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error(), "code": targetErrorCode(err)})
 			return
 		}
-		job, started, err := s.scans.start(s.Scan, ref)
+		job, started, err := s.scans.start(s.Scan, target)
 		if err != nil {
 			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": err.Error()})
 			return

@@ -259,6 +259,11 @@
     background: var(--papier); color: var(--encre); font: 12px/1.5 var(--mono); resize: vertical; font-variant-ligatures: none;
   }
   .base { margin: 0; font-size: 12px; color: var(--gris); }
+  .constat .titre code { font-size: 14px; font-weight: 500; color: var(--gris); }
+  .vulns { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+  .vulns li { display: flex; align-items: baseline; gap: 8px; }
+  .vulns .grav { padding: 0 6px; font-size: 10px; }
+  .base b { font-weight: 700; color: var(--encre); }
   .lien { padding: 0; border: 0; background: none; color: var(--encre); font-size: 14px; text-decoration: underline; text-underline-offset: 4px; cursor: pointer; }
   .meta .lien { margin-left: auto; }
 
@@ -298,7 +303,7 @@
       <span class="mot">quaero</span>
     </a>
     <div class="quota" id="quota" role="status" hidden>
-      <span class="q-lib">quota GitHub, par minute</span>
+      <span class="q-lib" id="quota-lib">quota GitHub, par minute</span>
       <span class="q-n" id="quota-n"></span>
       <span class="jauge" id="quota-jauge" aria-hidden="true"></span>
       <span class="q-sous" id="quota-sous"></span>
@@ -333,15 +338,15 @@
   </div>
 
   <div class="vue" id="vue-audit" role="tabpanel" aria-labelledby="tab-audit" hidden>
-  <p class="intro">Nomme un dépôt public. Quaero le clone, l'analyse, puis l'efface.</p>
+  <p class="intro">Nomme un dépôt GitHub ou un dossier de ta machine. Quaero l'analyse, puis efface ce qu'il a cloné.</p>
   <section class="question" aria-label="Audit">
     <div class="barre">
-      <label for="cible" class="cache">Dépôt à analyser</label>
+      <label for="cible" class="cache">Dépôt ou dossier à analyser</label>
       <input type="text" id="cible" autocomplete="off" spellcheck="false"
-             placeholder="owner/repo ou URL github.com">
+             placeholder="owner/repo, URL github.com ou chemin d'un dossier">
       <button class="go" id="analyser" type="button">analyser</button>
     </div>
-    <p class="consigne">Analyse statique, moteurs en environnement durci. Pour du code douteux, lance Quaero dans une machine jetable.</p>
+    <p class="consigne">Un dépôt privé demande un jeton qui peut le lire. Pour du code douteux, lance Quaero dans une machine jetable.</p>
   </section>
   <section id="audit" aria-live="polite"></section>
   </div>
@@ -566,6 +571,49 @@ var state = {
 
 function $(id) { return document.getElementById(id); }
 
+// ---- session ---------------------------------------------------------------
+
+// Le jeton de session arrive une fois dans le fragment de l'adresse (#t=...),
+// que le navigateur n'envoie a aucun serveur. Il est range dans le stockage de
+// cette origine, port compris, puis retire de l'adresse. Chaque appel a l'API
+// le porte en en-tete: le cookie seul, que d'autres serveurs de la machine
+// recoivent aussi, n'ouvre pas l'API.
+var SESSION_KEY = "quaero.session";
+var session = (function () {
+  var m = /(?:^#|&)t=([A-Za-z0-9_-]+)/.exec(location.hash), t = "";
+  try {
+    if (m) localStorage.setItem(SESSION_KEY, m[1]);
+    t = localStorage.getItem(SESSION_KEY) || "";
+  } catch (e) { /* stockage indisponible: le jeton vit le temps de l'onglet */ }
+  if (m) {
+    t = t || m[1];
+    try { history.replaceState(null, "", location.pathname + location.search); } catch (e) { /* sans effet */ }
+  }
+  return t;
+})();
+
+function qfetch(url, opts) {
+  opts = opts || {};
+  opts.headers = opts.headers || {};
+  opts.headers["X-Quaero-Session"] = session;
+  return fetch(url, opts).then(function (r) {
+    if (r.status === 401) sessionLost();
+    return r;
+  });
+}
+
+// Une session perdue (Quaero relance, ou onglet d'une autre execution) se dit
+// en une ligne, en tete de page.
+function sessionLost() {
+  if ($("session-perdue")) return;
+  var p = document.createElement("p");
+  p.id = "session-perdue";
+  p.className = "erreur";
+  p.textContent = "Session non ouverte, relance Quaero.";
+  var tabs = document.querySelector(".onglets");
+  tabs.parentNode.insertBefore(p, tabs);
+}
+
 function esc(s) {
   return String(s == null ? "" : s)
     .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
@@ -659,14 +707,14 @@ function setOption(o) {
 function setQuota(q) {
   if (!q || !(q.limit > 0)) return;
   state.quota = {
-    remaining: q.remaining, limit: q.limit,
+    remaining: q.remaining, limit: q.limit, anonymous: !!q.anonymous,
     deadline: q.reset_in > 0 ? Date.now() + q.reset_in * 1000 : 0
   };
   drawQuota();
 }
 
 function loadQuota() {
-  fetch("/api/quota").then(function (r) { return r.json(); }).then(setQuota).catch(function () {});
+  qfetch("/api/quota").then(function (r) { return r.json(); }).then(setQuota).catch(function () {});
 }
 
 function drawQuota() {
@@ -684,7 +732,11 @@ function drawQuota() {
   var box = $("quota");
   box.hidden = false;
   box.classList.toggle("bas", can < 1);
-  box.title = "GitHub autorise " + q.limit + " requêtes de recherche par minute et par compte, quel que soit l'abonnement. "
+  // Sans jeton, GitHub accorde moins: la page le dit, et comment en avoir plus.
+  $("quota-lib").textContent = q.anonymous ? "quota GitHub sans jeton" : "quota GitHub, par minute";
+  box.title = (q.anonymous
+    ? "Sans jeton, GitHub autorise " + q.limit + " requêtes de recherche par minute. Un jeton sans aucune permission en donne 30, avec quaero -save-token <jeton>. "
+    : "GitHub autorise " + q.limit + " requêtes de recherche par minute et par compte, quel que soit l'abonnement. ")
     + "Une recherche approfondie en coûte 5, une rapide 1, l'option toutes langues jusqu'à 6 de plus.";
   $("quota-n").innerHTML = q.remaining + "<small> / " + q.limit + "</small>";
 
@@ -724,7 +776,7 @@ function init() {
   });
   showTab(location.hash === "#auditer" ? "audit" : "recherche");
   loadScan();
-  fetch("/api/version").then(function (r) { return r.json(); })
+  qfetch("/api/version").then(function (r) { return r.json(); })
     .then(function (d) { $("version").textContent = d.version || ""; })
     .catch(function () {});
   loadQuota();
@@ -759,7 +811,7 @@ function preview() {
   var phrase = $("q").value.trim(), box = $("apercu");
   if (!phrase || phrase === state.searched) { box.hidden = true; box.innerHTML = ""; return; }
   var seq = ++previewSeq;
-  fetch("/api/read?q=" + encodeURIComponent(phrase) + "&scope=" + encodeURIComponent(state.scope))
+  qfetch("/api/read?q=" + encodeURIComponent(phrase) + "&scope=" + encodeURIComponent(state.scope))
     .then(function (r) { return r.json(); })
     .then(function (data) {
       if (seq !== previewSeq || data.error) return;
@@ -797,7 +849,7 @@ function run(opts) {
           + "&upto=" + state.upto
           + filterParams(state.filters);
 
-  fetch(url)
+  qfetch(url)
     .then(function (r) { return r.json(); })
     .then(function (data) {
       state.searched = phrase;
@@ -1227,7 +1279,20 @@ function showTab(name) {
 var SEVERITY_LABEL = { critical: "critique", high: "élevée", medium: "moyenne", low: "faible", info: "info" };
 var STAGE_LABEL = { clone: "clone de", analyse: "analyse de", annulation: "annulation de" };
 
-var audit = { available: true, job: null, notice: null, timer: null, misses: 0, drafts: {} };
+var audit = {
+  available: true, job: null, notice: null, timer: null, misses: 0, drafts: {},
+  filter: { sev: "toutes", kind: "tout" }
+};
+
+// Ce que le serveur refuse, dit avec des mots.
+var TARGET_ERRORS = {
+  cible: function (t) { return "« " + t + " » n'est ni un dépôt GitHub (owner/repo ou URL github.com) ni le chemin complet d'un dossier."; },
+  dossier_absent: function (t) { return "Le dossier « " + t + " » est introuvable."; },
+  pas_un_dossier: function (t) { return "« " + t + " » n'est pas un dossier."; },
+  racine: function () { return "Une racine de disque ne s'analyse pas. Nomme le dossier du projet."; },
+  reseau: function () { return "Un chemin réseau ne s'analyse pas d'ici. Copie le projet sur ta machine."; },
+  local_ferme: function () { return "Quaero écoute sur tout le réseau, il ne lit pas de dossier local dans ce mode."; }
+};
 
 function api(method, url, body) {
   var o = { method: method, headers: {} };
@@ -1235,7 +1300,7 @@ function api(method, url, body) {
     o.headers["Content-Type"] = "application/x-www-form-urlencoded";
     o.body = body;
   }
-  return fetch(url, o).then(function (r) {
+  return qfetch(url, o).then(function (r) {
     return r.json().catch(function () { return {}; }).then(function (d) {
       d.status = r.status;
       return d;
@@ -1267,7 +1332,10 @@ function retryScan() {
 }
 
 function setJob(job) {
-  if (!job || !audit.job || job.id !== audit.job.id) audit.drafts = {};
+  if (!job || !audit.job || job.id !== audit.job.id) {
+    audit.drafts = {};
+    audit.filter = { sev: "toutes", kind: "tout" };
+  }
   // L'avis "deja en cours" ne vaut que tant que l'analyse tourne.
   if (audit.notice && audit.notice[2] && !(job && job.running)) audit.notice = null;
   if (audit.notice && audit.notice[0] === "erreur" && audit.misses === 0) audit.notice = null;
@@ -1287,7 +1355,7 @@ function startScan() {
   if (!target) { $("cible").focus(); return; }
   audit.notice = null;
   $("analyser").disabled = true;
-  api("POST", "/api/scan", "repo=" + encodeURIComponent(target)).then(function (d) {
+  api("POST", "/api/scan", "cible=" + encodeURIComponent(target)).then(function (d) {
     if (d.status === 202) { setJob(d.job); return; }
     if (d.status === 409) {
       audit.notice = ["déjà en cours", "Une analyse tourne, attends sa fin ou annule-la.", true];
@@ -1295,7 +1363,7 @@ function startScan() {
       return;
     }
     if (d.status === 400) {
-      setNotice("cible refusée", "« " + target + " » n'est pas un dépôt GitHub. Écris owner/repo ou une URL github.com.");
+      setNotice("cible refusée", TARGET_ERRORS[d.code] ? TARGET_ERRORS[d.code](target) : (d.error || "cible illisible"));
       return;
     }
     setNotice("erreur", d.error || "analyse impossible (" + d.status + ")");
@@ -1372,6 +1440,8 @@ function findingItem(f, job) {
   if (f.description) body += "<p>" + esc(f.description) + "</p>";
   evidenceOf(f, "code").slice(0, 1).forEach(function (c) { body += "<pre>" + esc(c) + "</pre>"; });
   evidenceOf(f, "rule").slice(0, 1).forEach(function (r) { body += "<p>règle <code>" + esc(r) + "</code></p>"; });
+  // Ce qu'un autre moteur a dit de la meme ligne, fusionne dans ce constat.
+  evidenceOf(f, "fusionne").forEach(function (o) { body += "<p>aussi relevé ici, " + esc(o) + "</p>"; });
   var refs = (f.references || []).map(function (r) { return r.id; }).filter(Boolean);
   if (refs.length) body += "<p>" + esc(refs.join(", ")) + "</p>";
   evidenceOf(f, "url").filter(function (u) { return /^https:\/\//.test(u); }).slice(0, 3).forEach(function (u) {
@@ -1387,7 +1457,7 @@ function findingItem(f, job) {
     h += '<div class="brouillon"><textarea readonly spellcheck="false" aria-label="Brouillon de signalement">' + esc(d.text) + "</textarea>"
        + '<div class="actions"><button type="button" class="choix" data-copy="' + esc(f.id) + '">copier</button>'
        + '<button type="button" class="choix" data-save="' + esc(f.id) + '">enregistrer .md</button>'
-       + '<a href="' + esc(job.report_url) + '" target="_blank" rel="noopener noreferrer">signalement privé sur GitHub</a></div>'
+       + (job.report_url ? '<a href="' + esc(job.report_url) + '" target="_blank" rel="noopener noreferrer">signalement privé sur GitHub</a>' : "") + "</div>"
        + '<p class="base">Rien n\'est envoyé. Remplis les sections TO COMPLETE et retire la liste de contrôle avant de déposer.</p></div>';
   }
   return h + "</li>";
@@ -1430,15 +1500,130 @@ function renderAudit() {
   bindAudit($("audit"));
 }
 
+// Le rang d'une gravite, pour trier et pour garder la pire d'un groupe.
+var SEVERITY_ORDER = ["critical", "high", "medium", "low", "info"];
+function sevRank(sev) {
+  var i = SEVERITY_ORDER.indexOf(sev);
+  return i < 0 ? SEVERITY_ORDER.length : i;
+}
+
+// isPublished reconnait une vulnerabilite deja publiee (OSV, GHSA, CVE): elle
+// vit dans une dependance, pas dans le code du depot.
+function isPublished(f) {
+  if ((f.target || {}).type === "dependency") return true;
+  return (f.references || []).some(function (r) { return r.framework === "OSV" || r.framework === "GHSA" || r.framework === "CVE"; });
+}
+
+// depOf lit le paquet et sa version, ecrits "nom@version" (avec ou sans v).
+function depOf(f) {
+  var id = (f.target || {}).identifier || "", at = id.lastIndexOf("@");
+  if (at <= 0) return { name: id || "?", version: "" };
+  return { name: id.slice(0, at), version: id.slice(at + 1).replace(/^(go|v)(?=\d)/, "") };
+}
+
+// auditItems range les constats en elements de liste: un par constat de code,
+// un par dependance avec toutes ses vulnerabilites publiees. Le pire d'abord.
+function auditItems(list) {
+  // Sans prototype: un paquet nomme "constructor" reste un paquet.
+  var items = [], deps = Object.create(null);
+  list.forEach(function (f, i) {
+    if (!isPublished(f)) {
+      items.push({ kind: "code", sev: f.severity || "info", order: i, f: f });
+      return;
+    }
+    var d = depOf(f), g = deps[d.name];
+    if (!g) {
+      g = deps[d.name] = { kind: "dep", sev: f.severity || "info", order: i, name: d.name, versions: [], list: [] };
+      items.push(g);
+    }
+    if (d.version && g.versions.indexOf(d.version) < 0) g.versions.push(d.version);
+    if (sevRank(f.severity) < sevRank(g.sev)) g.sev = f.severity;
+    g.list.push(f);
+  });
+  return items.sort(function (a, b) {
+    return sevRank(a.sev) - sevRank(b.sev) || (a.kind === b.kind ? 0 : a.kind === "code" ? -1 : 1) || a.order - b.order;
+  });
+}
+
+var KIND_LABEL = { tout: "tout", code: "code", dep: "dépendances" };
+
+// auditFilters dessine les filtres, chacun compte ce que l'autre laisse.
+function auditFilters(items) {
+  var f = audit.filter, h = "";
+  var bySev = items.filter(function (it) { return f.kind === "tout" || it.kind === f.kind; });
+  var byKind = items.filter(function (it) { return f.sev === "toutes" || it.sev === f.sev; });
+  var sevs = SEVERITY_ORDER.filter(function (sv) {
+    return sv === f.sev || bySev.some(function (it) { return it.sev === sv; });
+  });
+  if (sevs.length > 1 || f.sev !== "toutes") {
+    h += '<div class="filtres"><span>gravité</span><div class="boutons" role="group" aria-label="Filtrer par gravité">'
+       + btn("data-sev", "toutes", "toutes", f.sev === "toutes", bySev.length);
+    sevs.forEach(function (sv) {
+      h += btn("data-sev", sv, SEVERITY_LABEL[sv], f.sev === sv, bySev.filter(function (it) { return it.sev === sv; }).length);
+    });
+    h += "</div></div>";
+  }
+  var kinds = ["code", "dep"].filter(function (k) { return k === f.kind || byKind.some(function (it) { return it.kind === k; }); });
+  if (kinds.length > 1 || f.kind !== "tout") {
+    h += '<div class="filtres"><span>type</span><div class="boutons" role="group" aria-label="Filtrer par type">'
+       + btn("data-kind", "tout", KIND_LABEL.tout, f.kind === "tout", byKind.length);
+    kinds.forEach(function (k) {
+      h += btn("data-kind", k, KIND_LABEL[k], f.kind === k, byKind.filter(function (it) { return it.kind === k; }).length);
+    });
+    h += "</div></div>";
+  }
+  return h;
+}
+
+// depItem dessine une dependance et ses vulnerabilites publiees. Elles sont
+// deja connues: la reponse est une mise a jour, pas un signalement prive.
+function depItem(g) {
+  var n = g.list.length, engines = [], reach = false, fix = "";
+  g.list.forEach(function (f) {
+    evidenceOf(f, "engine").forEach(function (e) { if (engines.indexOf(e) < 0) engines.push(e); });
+    if (evidenceOf(f, "engine").indexOf("govulncheck") >= 0) {
+      if (f.severity === "high" || f.severity === "critical") reach = true;
+      if (!fix && f.remediation) fix = f.remediation;
+    }
+  });
+  var h = '<li class="depot constat dep" data-id="' + esc("dep:" + g.name) + '"><div class="l1">'
+        + '<span class="grav ' + esc(g.sev) + '">' + esc(SEVERITY_LABEL[g.sev] || g.sev) + "</span>"
+        + '<span class="titre">' + esc(g.name) + (g.versions.length ? " <code>" + esc(g.versions.join(", ")) + "</code>" : "") + "</span></div>"
+        + '<p class="lieu"><span>' + n + (n > 1 ? " vulnérabilités publiées" : " vulnérabilité publiée") + "</span>"
+        + (engines.length ? "<span>" + esc(engines.join(", ")) + "</span>" : "") + "</p>";
+
+  var body = '<ul class="vulns">';
+  g.list.forEach(function (f) {
+    var ids = (f.references || []).filter(function (r) { return r.framework !== "CWE"; }).map(function (r) { return r.id; });
+    body += '<li><span class="grav ' + esc(f.severity || "info") + '">' + esc(SEVERITY_LABEL[f.severity] || f.severity || "info") + "</span>"
+          + "<span>" + esc(f.title) + (ids.length ? " <code>" + esc(ids.slice(0, 3).join(", ")) + "</code>" : "") + "</span></li>";
+  });
+  body += "</ul>";
+  if (fix) body += "<p>" + esc(fix) + "</p>";
+  h += '<details class="plus"><summary>vulnérabilités</summary><div class="plus-corps">' + body + "</div></details>";
+
+  if (reach) {
+    h += '<p class="base"><b>govulncheck trouve un appel au code fautif.</b> Vérifie l\'impact, puis propose la mise à jour.</p>';
+  } else {
+    h += '<p class="base">Déjà publiées. Une mise à jour de la dépendance, par une PR ordinaire, suffit.</p>';
+  }
+  if (g.name === "stdlib") {
+    h += '<p class="base">osv-scanner lit la version de Go écrite dans go.mod, pas celle qui compile. Compare avec la version de Go réellement utilisée.</p>';
+  }
+  return h + "</li>";
+}
+
 function auditResult(job) {
   var rep = job.report || {}, ctx = (rep.run || {}).context || {};
   var reportable = {};
   (job.reportable || []).forEach(function (id) { reportable[id] = true; });
   var list = (rep.findings || []).filter(function (f) { return reportable[f.id]; });
-  var eng = engines(rep), n = list.length;
+  var eng = engines(rep), items = auditItems(list), n = items.length;
 
-  var h = '<div class="bandeau"><h2>' + n + (n > 1 ? " constats" : " constat") + "<small>"
-        + '<a href="' + esc(job.url) + '" target="_blank" rel="noopener">' + esc(job.repo) + "</a>"
+  var where = job.url
+    ? '<a href="' + esc(job.url) + '" target="_blank" rel="noopener">' + esc(job.repo) + "</a>"
+    : "<code>" + esc(job.repo) + "</code>";
+  var h = '<div class="bandeau"><h2>' + n + (n > 1 ? " constats" : " constat") + "<small>" + where
         + (ctx.commit ? ", commit " + esc(String(ctx.commit).slice(0, 7)) : "")
         + ", " + duration(job.elapsed_s) + "</small></h2></div>";
   h += eng.html;
@@ -1450,9 +1635,16 @@ function auditResult(job) {
   if (!n) {
     return h + '<p class="rien">' + (eng.partial ? "Rien relevé, mais un moteur n'a rien vérifié." : "Rien relevé par les moteurs.") + "</p>";
   }
+  h += auditFilters(items);
+  var f = audit.filter;
+  var shown = items.filter(function (it) {
+    return (f.sev === "toutes" || it.sev === f.sev) && (f.kind === "tout" || it.kind === f.kind);
+  });
   h += '<ol class="liste">';
-  list.forEach(function (f) { h += findingItem(f, job); });
-  return h + '</ol><p class="base">À vérifier à la main. Un constat non confirmé ne se signale pas.</p>';
+  shown.forEach(function (it) { h += it.kind === "code" ? findingItem(it.f, job) : depItem(it); });
+  h += "</ol>";
+  if (!shown.length) h += '<p class="rien">Rien avec ces filtres.</p>';
+  return h + '<p class="base">À vérifier à la main. Un constat non confirmé ne se signale pas.</p>';
 }
 
 function findingById(id) {
@@ -1487,6 +1679,8 @@ function bindAudit(root) {
     }
   };
   each("[data-draft]", function (b) { toggleDraft(b.getAttribute("data-draft")); });
+  each("[data-sev]", function (b) { audit.filter.sev = b.getAttribute("data-sev"); renderAudit(); });
+  each("[data-kind]", function (b) { audit.filter.kind = b.getAttribute("data-kind"); renderAudit(); });
   each("[data-copy]", function (b) { copyDraft(b.getAttribute("data-copy"), b); });
   each("[data-save]", function (b) { saveDraft(b.getAttribute("data-save")); });
 }

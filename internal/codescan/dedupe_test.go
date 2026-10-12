@@ -5,6 +5,7 @@ package codescan
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/terrypsv/Quaero/internal/finding"
@@ -141,5 +142,94 @@ func TestIdentifiantsUniques(t *testing.T) {
 			t.Errorf("identifiant %q en double", f.ID)
 		}
 		seen[f.ID] = true
+	}
+}
+
+func codeAt(id, loc, engine string, sev finding.Severity, cwe string) finding.Finding {
+	f := finding.Finding{
+		ID: id, Title: id + " titre", Severity: sev, Status: finding.StatusReview,
+		Target:   &finding.Target{Type: "code", Identifier: loc},
+		Evidence: []finding.Evidence{{Type: EvidenceEngine, Data: engine}},
+	}
+	if cwe != "" {
+		f.References = []finding.Reference{{Framework: "CWE", ID: cwe}}
+	}
+	return f
+}
+
+// semgrep et gosec sur la meme ligne ne font qu'un constat, le plus grave, qui
+// garde les deux moteurs, les deux CWE et le titre de l'autre.
+func TestMemeLigneDeuxMoteurs(t *testing.T) {
+	fs := mergeSameLine([]finding.Finding{
+		codeAt("QRO-SEMGREP-exec", "util.go:27", "semgrep", finding.SeverityHigh, "CWE-94"),
+		codeAt("QRO-GOSEC-G204", "util.go:27", "gosec", finding.SeverityMedium, "CWE-78"),
+		codeAt("QRO-GOSEC-G204-b", "util.go:28", "gosec", finding.SeverityMedium, "CWE-78"),
+	})
+	if len(fs) != 2 {
+		t.Fatalf("%d constats, attendu 2: %+v", len(fs), fs)
+	}
+	m := fs[0]
+	if m.ID != "QRO-SEMGREP-exec" || m.Severity != finding.SeverityHigh {
+		t.Errorf("survivant %s %s", m.ID, m.Severity)
+	}
+	if e := enginesOf(m); !e["semgrep"] || !e["gosec"] {
+		t.Errorf("moteurs %v", e)
+	}
+	if len(m.References) != 2 {
+		t.Errorf("references %v", m.References)
+	}
+	merged := false
+	for _, e := range m.Evidence {
+		merged = merged || (e.Type == EvidenceMerged && strings.Contains(e.Data, "QRO-GOSEC-G204 titre (gosec)"))
+	}
+	if !merged {
+		t.Errorf("titre de l'autre moteur perdu: %+v", m.Evidence)
+	}
+}
+
+// La fusion ne depend pas de l'ordre, et ne perd ni description ni lien.
+func TestMemeLigneOrdreEtContenu(t *testing.T) {
+	a := codeAt("A", "x.go:3", "semgrep", finding.SeverityMedium, "")
+	a.Description = "message semgrep complet"
+	b := codeAt("B", "x.go:3", "gosec", finding.SeverityHigh, "")
+	b.Evidence = append(b.Evidence, finding.Evidence{Type: "url", Data: "https://exemple/b"})
+	c := codeAt("C", "x.go:3", "semgrep", finding.SeverityLow, "")
+	d := codeAt("D", "x.go:3", "gosec", finding.SeverityLow, "")
+	fs := mergeSameLine([]finding.Finding{a, b, c, d})
+	if len(fs) != 2 {
+		t.Fatalf("%d constats, attendu 2 (A+B, C+D)", len(fs))
+	}
+	if fs[0].ID != "B" || !strings.Contains(fs[0].Description, "message semgrep complet") {
+		t.Errorf("survivant %s, description %q", fs[0].ID, fs[0].Description)
+	}
+	if e := enginesOf(fs[1]); !e["semgrep"] || !e["gosec"] {
+		t.Errorf("C et D non fusionnes: %v", e)
+	}
+	a.Evidence = append(a.Evidence, finding.Evidence{Type: "url", Data: "https://exemple/a"})
+	m := mergeSameLine([]finding.Finding{b, a})[0]
+	n := 0
+	for _, e := range m.Evidence {
+		if e.Type == "url" {
+			n++
+		}
+	}
+	if n != 2 {
+		t.Errorf("%d liens gardes, attendu 2", n)
+	}
+}
+
+// Deux regles du meme moteur, des dependances ou des constats sur le scan ne
+// sont pas fusionnes par ligne.
+func TestMemeLigneNonFusionnes(t *testing.T) {
+	dep := codeAt("QRO-VULN-1", "mod@v1", "govulncheck", finding.SeverityHigh, "")
+	dep.References = []finding.Reference{{Framework: "OSV", ID: "GO-1"}}
+	fs := mergeSameLine([]finding.Finding{
+		codeAt("A", "a.go:1", "semgrep", finding.SeverityHigh, ""),
+		codeAt("B", "a.go:1", "semgrep", finding.SeverityLow, ""),
+		dep,
+		{ID: "QRO-SCAN-ABSENT-gosec", Target: &finding.Target{Type: "code", Identifier: "a.go:1"}},
+	})
+	if len(fs) != 4 {
+		t.Errorf("%d constats, attendu 4", len(fs))
 	}
 }

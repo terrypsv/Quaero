@@ -1,5 +1,4 @@
-<img width="3200" height="800" alt="quaero-sombre" src="https://github.com/user-attachments/assets/f7b68e7b-e249-4460-957c-cfcbd3e477b3" />
-
+<img width="485" height="184" alt="ascii-art-text" src="https://github.com/user-attachments/assets/f68fb629-efe8-459d-889e-611113698594" />
 
 
 # Quaero
@@ -107,9 +106,11 @@ silence après desserrage serait un mensonge.
 go build -o quaero ./cmd/quaero
 ```
 
-Un jeton GitHub est obligatoire. Sans lui, la recherche est limitée à 10
-requêtes par minute, deux recherches approfondies. Le jeton n'a besoin d'aucune
-permission: la recherche publique n'en demande pas.
+Quaero démarre sans jeton. Chacun utilise le sien, rien n'est lié au compte de
+l'auteur. Sans jeton, GitHub limite la recherche à 10 requêtes par minute, soit
+deux recherches approfondies, et l'interface le signale. L'audit d'un dépôt
+public n'en a pas besoin. Un jeton sans aucune permission fait passer la
+recherche à 30 requêtes par minute.
 
 Le plus simple est de l'enregistrer une fois:
 
@@ -194,11 +195,15 @@ extérieure, pas d'intégration dans un cadre) et `Referrer-Policy: no-referrer`
 
 Chaque requête doit aussi porter le jeton de session, tiré au hasard à chaque
 lancement et gardé en mémoire seulement. Quaero ouvre lui-même le navigateur
-sur le lien qui le porte: le jeton passe une fois dans l'adresse, devient un
-cookie `HttpOnly` `SameSite=Strict`, puis disparaît de la barre d'adresse. Le
-navigateur n'envoie ce cookie ni à une autre origine ni depuis un autre site,
-si bien qu'une page ouverte ailleurs ne peut ni lire l'interface ni lui faire
-lancer quoi que ce soit. Sans session, rien n'est servi, pas même les polices.
+sur le lien qui le porte. Le jeton passe une fois dans l'adresse, disparaît de
+la barre d'adresse, puis vit à deux endroits. Un cookie `HttpOnly`
+`SameSite=Strict` ouvre la page et ses polices. L'API exige le jeton dans
+l'en-tête `X-Quaero-Session`, que la page garde dans le stockage de son
+origine. Un cookie ne distingue pas les ports, le navigateur l'envoie aussi à
+tout autre serveur de 127.0.0.1, qui pourrait le rejouer. Le stockage de la
+page, lui, est propre à son port, et une page d'un autre site ne peut pas
+poser cet en-tête. Chercher, lire un rapport ou lancer une analyse demande
+donc le jeton lui-même. Sans session, rien n'est servi, pas même les polices.
 Avec `-no-browser`, le lien de session s'affiche dans le terminal. Après un
 redémarrage, l'ancien onglet n'a plus le bon jeton: Quaero en ouvre un nouveau,
 et l'ancien affiche une seule ligne, « Session non ouverte, relance Quaero. »
@@ -332,11 +337,35 @@ Au-delà de la santé d'un dépôt, Quaero audite la sécurité de son code. Le
 périmètre reste la lecture: l'outil analyse du code source, il ne sonde ni
 n'exploite aucun système en fonctionnement.
 
-`-scan` prend un chemin local, ou une référence de dépôt GitHub public à
-cloner. Un dépôt public se nomme par `owner/repo` ou par son URL github.com;
-Quaero le clone en superficiel dans un dossier temporaire, l'analyse, puis
-efface le clone. Nommer la cible reste un acte humain, Quaero ne cherche pas de
-cible. Un dossier local déjà présent l'emporte sur une référence de même forme.
+`-scan` prend un chemin local, ou une référence de dépôt GitHub à cloner. Un
+dépôt se nomme par `owner/repo` ou par son URL github.com. Quaero le clone en
+superficiel dans un dossier temporaire, l'analyse, puis efface le clone.
+Nommer la cible reste un acte humain, Quaero ne cherche pas de cible. Un
+dossier local déjà présent l'emporte sur une référence de même forme.
+
+### Dépôts privés
+
+Un dépôt privé s'analyse de deux façons.
+
+- Par son dossier, s'il est déjà cloné: `-scan <chemin>`, ou le chemin complet
+  dans l'onglet « auditer ». Rien n'est cloné ni effacé, le code reste où il
+  est.
+- Par son nom, avec un jeton qui peut le lire. Quaero tente toujours le clone
+  sans identifiant. Si GitHub le refuse, et seulement dans ce cas, il réessaie
+  avec le jeton de l'utilisateur. Un dépôt public ne voit donc jamais passer le
+  jeton. Un jeton à grain fin limité aux dépôts voulus, avec le seul droit
+  « Contents » en lecture, suffit. Le jeton passe à git par l'environnement,
+  jamais par la ligne de commande, et uniquement vers github.com.
+
+Aucun gestionnaire d'identifiants n'est sollicité pendant le clone. Il n'y a
+ni fenêtre de connexion ni identifiant enregistré utilisé à l'insu de
+l'utilisateur.
+
+Le code analysé ne quitte pas la machine. Les moteurs, eux, consultent des
+bases publiques. osv-scanner envoie le nom et la version des dépendances à
+OSV, govulncheck télécharge la base de vulnérabilités Go, semgrep télécharge
+ses règles. Pour un dépôt dont même la liste des dépendances est
+confidentielle, analyser sur une machine sans réseau reste la seule garantie.
 
 ```bash
 quaero -scan /chemin/vers/un/depot
@@ -408,6 +437,14 @@ informatif est gardé, govulncheck en tête puisqu'il sait si le code fautif
 est appelé, et chaque constat dit quels moteurs l'ont trouvé. Le rapport
 indique combien de doublons ont été fusionnés.
 
+Deux moteurs différents qui signalent la même ligne du même fichier ne font
+aussi qu'un constat. semgrep et gosec relèvent souvent le même appel
+(`dangerous-exec-command` et `G204` sur un `exec.Command`), sous deux CWE
+voisines. Le plus grave reste, et garde le titre, les moteurs et les CWE de
+l'autre. Deux règles du même moteur sur la même ligne restent deux constats.
+Le titre d'un constat semgrep garde la première phrase du message, le reste
+est dans la description.
+
 Chaque constat sort en statut `review` et `declared=false`. L'analyse statique
 produit des **candidats**, pas des verdicts: confirmer une faille se fait sur
 une instance locale montée soi-même, et la déclarer passe par une divulgation
@@ -443,23 +480,34 @@ faille encore non corrigée.
 
 Ctrl+C pendant `-scan owner/repo` arrête les moteurs, efface le clone et
 n'écrit aucun rapport. Des moteurs coupés en route passeraient pour un dépôt
-vérifié.
+vérifié. Un moteur arrêté l'est avec tout ce qu'il a lancé (groupe de
+processus sous Linux et macOS, `taskkill /T` sous Windows), pour qu'aucun
+sous-processus ne continue seul ni ne garde le clone ouvert. Un clone resté
+d'une exécution précédente est signalé au démarrage de l'interface.
 
 ### Depuis l'interface
 
-L'onglet « auditer » fait la même chose que `-scan owner/repo`, sans terminal.
-On nomme un dépôt public (`owner/repo` ou une URL github.com), Quaero le clone,
-l'analyse avec l'environnement durci des dépôts tiers, puis efface le clone.
-Le lien « auditer » d'un résultat de recherche remplit le champ sans rien
-lancer. Lancer reste un geste à part.
+L'onglet « auditer » fait la même chose que `-scan`, sans terminal. On nomme
+un dépôt GitHub (`owner/repo` ou une URL github.com), que Quaero clone,
+analyse avec l'environnement durci des dépôts tiers, puis efface. On peut
+aussi nommer le chemin complet d'un dossier de la machine, lu sur place. Le
+lien « auditer » d'un résultat de recherche remplit le champ sans rien lancer.
+Lancer reste un geste à part.
 
-- Seuls les dépôts github.com sont acceptés. L'interface n'analyse jamais un
-  chemin local, qui reste l'affaire de `-scan <chemin>`.
+- Un dépôt github.com, public ou privé (voir plus haut), ou un dossier nommé
+  par son chemin complet. Un chemin relatif dépendrait du dossier où Quaero a
+  été lancé, il est refusé, comme une racine de disque.
 - Une analyse à la fois, annulable. Une seconde demande est refusée, pas mise
   en file. Fermer l'onglet ne l'arrête pas, le bouton « annuler » si, et
   Ctrl+C dans le terminal l'arrête et efface son clone avant de quitter.
 - Les moteurs s'affichent avec leur durée, ou absents, ou en échec. Un rapport
   sans constat ne vaut que si les moteurs ont tourné, et la page le dit.
+- Les vulnérabilités publiées d'une même dépendance tiennent sur une seule
+  ligne, avec leur nombre. Elles sont déjà connues, la réponse est une mise à
+  jour par une PR ordinaire, pas un signalement privé. Quand govulncheck trouve
+  un appel au code fautif, la ligne le dit.
+- Deux filtres, gravité et type (code, dépendances), réduisent la liste sans
+  relancer l'analyse.
 - « préparer le signalement » ouvre le brouillon d'un constat sous celui-ci,
   le même que `-advisory`, à copier ou à enregistrer en `.md`, avec le lien
   du formulaire de signalement privé du dépôt sur GitHub. Ce formulaire
@@ -478,6 +526,7 @@ internal/audit/     santé des dépôts d'une requête, vers le schéma de const
 internal/codescan/  audit de code (govulncheck, gosec, semgrep, osv-scanner)
 internal/advisory/  brouillon de signalement privé à partir d'un constat
 internal/repo/      lecture des références de dépôt GitHub, partagée
+internal/proctree/  arrêt d'un processus et de tout ce qu'il a lancé
 internal/finding/   schéma de constat partagé par la suite
 internal/webui/     serveur HTTP, cache des pages, analyses, page et polices
 scripts/polices.py  récupération des polices de l'interface

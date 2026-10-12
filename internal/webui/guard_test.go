@@ -16,11 +16,14 @@ func rawServer() http.Handler {
 	return (&Server{Client: &fakeSearcher{}, Version: "test", Token: testToken, Addr: testAddr}).Handler()
 }
 
+// req simule la page ouverte: le cookie pour la page, le meme jeton en en-tete
+// pour l'API.
 func req(target, host, cookie string) *httptest.ResponseRecorder {
 	r := httptest.NewRequest(http.MethodGet, target, nil)
 	r.Host = host
 	if cookie != "" {
 		r.AddCookie(&http.Cookie{Name: sessionCookie, Value: cookie})
+		r.Header.Set(sessionHeader, cookie)
 	}
 	rec := httptest.NewRecorder()
 	rawServer().ServeHTTP(rec, r)
@@ -65,8 +68,8 @@ func TestOuvertureDeSession(t *testing.T) {
 	if rec.Code != http.StatusSeeOther {
 		t.Fatalf("code = %d, attendu 303", rec.Code)
 	}
-	if loc := rec.Header().Get("Location"); loc != "/" {
-		t.Errorf("redirection = %q, attendu / pour retirer le jeton de l'adresse", loc)
+	if loc := rec.Header().Get("Location"); loc != "/#t="+testToken {
+		t.Errorf("redirection = %q, attendu /#t=<jeton>: la requete sans jeton, la page avec", loc)
 	}
 	var c *http.Cookie
 	for _, k := range rec.Result().Cookies() {
@@ -96,8 +99,42 @@ func TestRedirectionJamaisDetournee(t *testing.T) {
 	// Meme avec le bon jeton, un chemin comme //evil.example ne doit pas
 	// devenir une redirection vers un autre site.
 	rec := req("//evil.example/?t="+testToken, testAddr, "")
-	if loc := rec.Header().Get("Location"); loc != "/" {
-		t.Errorf("redirection = %q, attendu /", loc)
+	if loc := rec.Header().Get("Location"); !strings.HasPrefix(loc, "/#") {
+		t.Errorf("redirection = %q, attendu la racine", loc)
+	}
+}
+
+// Un cookie ne distingue pas les ports: tout autre serveur de 127.0.0.1 le
+// recoit et pourrait le rejouer. Il ouvre la page, jamais l'API, qui exige
+// le jeton en en-tete.
+func TestCookieSeulNOuvrePasLAPI(t *testing.T) {
+	for _, p := range []string{"/api/version", "/api/scan", "/api/search?q=yaml"} {
+		r := httptest.NewRequest(http.MethodGet, p, nil)
+		r.Host = testAddr
+		r.AddCookie(&http.Cookie{Name: sessionCookie, Value: testToken})
+		rec := httptest.NewRecorder()
+		rawServer().ServeHTTP(rec, r)
+		if rec.Code != http.StatusUnauthorized {
+			t.Errorf("%s avec le seul cookie: code = %d, attendu 401", p, rec.Code)
+		}
+	}
+	r := httptest.NewRequest(http.MethodGet, "/", nil)
+	r.Host = testAddr
+	r.AddCookie(&http.Cookie{Name: sessionCookie, Value: testToken})
+	rec := httptest.NewRecorder()
+	rawServer().ServeHTTP(rec, r)
+	if rec.Code != http.StatusOK {
+		t.Errorf("page avec le cookie: code = %d, attendu 200", rec.Code)
+	}
+	// Et l'en-tete seul n'ouvre pas la page: il ne vient que de la page
+	// elle-meme, deja ouverte.
+	r = httptest.NewRequest(http.MethodGet, "/", nil)
+	r.Host = testAddr
+	r.Header.Set(sessionHeader, testToken)
+	rec = httptest.NewRecorder()
+	rawServer().ServeHTTP(rec, r)
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("page avec le seul en-tete: code = %d, attendu 401", rec.Code)
 	}
 }
 

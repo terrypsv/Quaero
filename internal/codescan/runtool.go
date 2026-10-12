@@ -11,13 +11,9 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"time"
-)
 
-// waitDelay borne l'attente des sorties d'un moteur deja interrompu. Sans elle,
-// un sous-processus qui garde sa sortie ouverte peut bloquer le scan bien apres
-// l'expiration du delai.
-const waitDelay = 5 * time.Second
+	"github.com/terrypsv/Quaero/internal/proctree"
+)
 
 // toolResult est ce qu'un moteur a rendu: sa sortie standard, un extrait de sa
 // sortie d'erreur et son code de sortie.
@@ -43,7 +39,9 @@ func runTool(ctx context.Context, bin, dir string, args ...string) (toolResult, 
 	// nosemgrep: go.lang.security.audit.dangerous-exec-command.dangerous-exec-command
 	cmd := exec.CommandContext(ctx, bin, args...)
 	cmd.Dir = dir
-	cmd.WaitDelay = waitDelay
+	// Interrompu, le moteur est arrete avec tout ce qu'il a lance, et l'attente
+	// de ses sorties reste bornee (voir proctree).
+	proctree.Prepare(cmd)
 	// Un scan marque non fiable impose un environnement durci aux moteurs
 	// (voir sandbox.go). Les variables s'ajoutent apres celles du processus,
 	// donc elles l'emportent.

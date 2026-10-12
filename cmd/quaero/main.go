@@ -14,7 +14,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"syscall"
 	"time"
 
 	"github.com/terrypsv/Quaero/internal/codescan"
@@ -90,17 +89,15 @@ func main() {
 
 	client, err := github.New()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "erreur: %v\n\n", err)
-		fmt.Fprintln(os.Stderr, "Sans jeton, la recherche GitHub est limitee a 10 requetes par minute,")
-		fmt.Fprintln(os.Stderr, "deux recherches approfondies. Creer un jeton personnel sans")
-		fmt.Fprintln(os.Stderr, "aucune permission (la recherche publique n'en demande pas), puis:")
-		fmt.Fprintln(os.Stderr, "")
-		fmt.Fprintln(os.Stderr, "  quaero -save-token <jeton>     l'enregistrer une fois pour toutes")
-		fmt.Fprintln(os.Stderr, "")
-		fmt.Fprintln(os.Stderr, "ou, pour une session seulement:")
-		fmt.Fprintln(os.Stderr, "  PowerShell : $env:GITHUB_TOKEN=\"...\"")
-		fmt.Fprintln(os.Stderr, "  bash       : export GITHUB_TOKEN=...")
+		fmt.Fprintf(os.Stderr, "erreur: %v\n", err)
 		os.Exit(2)
+	}
+	// Sans jeton, Quaero tourne quand meme: chacun peut l'essayer sans rien
+	// creer. La recherche est alors limitee par GitHub, l'audit d'un depot
+	// public ne change pas.
+	if client.Anonymous() {
+		fmt.Fprintln(os.Stderr, "sans jeton GitHub: recherche limitee a 10 requetes par minute, audit inchange.")
+		fmt.Fprintln(os.Stderr, "Pour 30 par minute, un jeton sans aucune permission suffit: quaero -save-token <jeton>")
 	}
 	// Le jeton de session ne vit qu'en memoire, le temps de cette execution.
 	session, err := webui.NewToken()
@@ -108,7 +105,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "erreur: jeton de session impossible a tirer: %v\n", err)
 		os.Exit(2)
 	}
-	server := &webui.Server{Client: client, Version: version, Addr: *addr, Token: session, Scan: webScan}
+	server := &webui.Server{Client: client, Version: version, Addr: *addr, Token: session, Scan: webScan(client.Token)}
 	httpServer := &http.Server{
 		Addr:              *addr,
 		Handler:           server.Handler(),
@@ -137,11 +134,18 @@ func main() {
 	} else if err := openBrowser(url); err != nil {
 		fmt.Fprintf(os.Stderr, "navigateur non ouvert (%v). Ouvrir la session: %s\n", err, url)
 	}
+	// Un clone reste d'une execution precedente (arret brutal, fichier tenu
+	// sous Windows) se signale, sans etre efface: un autre Quaero pourrait
+	// etre en train de le lire.
+	if stale := staleClones(os.TempDir(), time.Hour); len(stale) > 0 {
+		fmt.Fprintf(os.Stderr, "attention: %d clone(s) d'analyses precedentes dans %s (%s*), a supprimer a la main\n",
+			len(stale), os.TempDir(), cloneDirPrefix)
+	}
 	fmt.Println("Ctrl+C pour arreter.")
 
 	// Ctrl+C arrete d'abord l'analyse en cours, le temps qu'elle efface son
 	// clone: quitter sans cela laisserait du code tiers dans le temporaire.
-	stop, release := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	stop, release := signal.NotifyContext(context.Background(), stopSignals...)
 	defer release()
 	go func() {
 		<-stop.Done()

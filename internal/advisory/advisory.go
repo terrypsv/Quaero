@@ -63,8 +63,13 @@ func Draft(rep *finding.Report, f finding.Finding) string {
 	writeChecklist(&b, f, dependency, publicIDs(f))
 
 	fmt.Fprintf(&b, "# %s\n\n", f.Title)
-	if target != "" {
+	switch {
+	case strings.HasPrefix(target, "github.com/"):
 		fmt.Fprintf(&b, "**Repository:** %s  \n", target)
+	case target != "":
+		// Un dossier local: son chemin ne dit rien au mainteneur et decrit la
+		// machine de l'operateur. Il ne part pas dans le brouillon.
+		b.WriteString("**Repository:** TO COMPLETE (scanned from a local copy)  \n")
 	}
 	if commit != "" {
 		fmt.Fprintf(&b, "**Analyzed revision:** `%s`  \n", commit)
@@ -101,6 +106,9 @@ func Draft(rep *finding.Report, f finding.Finding) string {
 	}
 	if engines := evidence(f, "engine"); len(engines) > 0 {
 		fmt.Fprintf(&b, "Reported by: %s.\n\n", strings.Join(engines, ", "))
+	}
+	for _, other := range evidence(f, "fusionne") {
+		fmt.Fprintf(&b, "Also reported on the same line as: %s.\n\n", other)
 	}
 
 	b.WriteString("## Reproduction\n\n")
