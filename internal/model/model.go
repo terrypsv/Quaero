@@ -35,6 +35,10 @@ type Repo struct {
 	// ranking layer. GitHub records no country, so this is the closest signal
 	// available for separating linguistic communities.
 	Script string `json:"script,omitempty"`
+	// Lang is the language the description is written in, as far as it can
+	// be told from the text: "anglais", "francais", "chinois"... Empty when
+	// there is no description.
+	Lang string `json:"lang,omitempty"`
 	// Health is filled by the ranking layer, not by the API.
 	Health Health `json:"health"`
 	// Score is the relevance score for the current query.
@@ -90,6 +94,11 @@ type Intent struct {
 	// them off explicitly.
 	ExcludeForks    bool `json:"exclude_forks"`
 	ExcludeArchived bool `json:"exclude_archived"`
+	// Exclude lists the words the phrase asked to keep out ("pas de nmap",
+	// "sauf windows", "-nmap"). They become NOT operators.
+	Exclude []string `json:"exclude,omitempty"`
+	// License, when the phrase named one ("licence mit"), as GitHub's key.
+	License string `json:"license,omitempty"`
 	// Explain lists the facets that were understood, so the user can see how
 	// their sentence was read and correct it if it was read wrong.
 	Explain []string `json:"explain,omitempty"`
@@ -118,6 +127,13 @@ type Filters struct {
 	MinStars int `json:"min_stars,omitempty"`
 	// PushedWithinDays narrows the activity window; the shorter one applies.
 	PushedWithinDays int `json:"pushed_within_days,omitempty"`
+	// License replaces the license read from the phrase, if any.
+	License string `json:"license,omitempty"`
+	// Owner keeps the repositories of one user or organisation.
+	Owner string `json:"owner,omitempty"`
+	// NoLists keeps out the "awesome" lists, which are links to tools rather
+	// than tools, and crowd the top of most security searches.
+	NoLists bool `json:"no_lists,omitempty"`
 }
 
 // Segment roles. A separator between two words carries no role.
@@ -131,6 +147,8 @@ const (
 	RoleGeneric    = "generique" // mot generique ecarte
 	RoleEmpty      = "vide"      // mot vide, sans valeur de recherche
 	RoleOverLimits = "limite"    // terme au-dela des quatre gardes
+	RoleExcluded   = "exclu"     // mot a ecarter, devenu NOT
+	RoleLicense    = "licence"   // devenu license:
 )
 
 // Segment is one piece of the phrase as typed.

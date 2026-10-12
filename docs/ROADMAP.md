@@ -31,6 +31,12 @@
       popularité), critères appliqués chez GitHub et retirables
 - [x] Une cinquantaine d'exemples de sécurité, huit à la fois, phrase en
       français ou en anglais
+- [x] Mots écartés dans la phrase ("pas de", "sauf", "hors", "-mot"), licence
+      lue dans la phrase, "sans agent" lu comme une caractéristique
+- [x] Critères licence, auteur et listes awesome pour resserrer la liste
+- [x] Langue réelle de la description (anglais, français, chinois, russe...)
+      au lieu de l'écriture
+- [x] Lecture de la phrase pendant la frappe, sans dépenser le quota
 - [ ] Validation d'usage réel sur des recherches quotidiennes
 - [ ] Release multi-plateforme
 

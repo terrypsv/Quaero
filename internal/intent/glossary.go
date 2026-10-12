@@ -375,6 +375,16 @@ var multiWord = []struct {
 	{"vidage memoire", "memory-dump"},
 	{"dump memoire", "memory-dump"},
 
+	// "sans" decrit une caracteristique, pas une exclusion: un outil sans
+	// agent est agentless, un maliciel sans fichier est fileless.
+	{"sans agent", "agentless"},
+	{"sans fichier", "fileless"},
+	{"sans serveur", "serverless"},
+	{"sans dependances", "zero-dependency"},
+	{"sans dependance", "zero-dependency"},
+	{"sans root", "rootless"},
+	{"interface graphique", "gui"},
+
 	{"ligne de commande", "cli"},
 	{"base de donnees", "database"},
 	{"bases de donnees", "database"},

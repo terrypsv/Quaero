@@ -24,8 +24,17 @@ func French(in model.Intent) model.Intent {
 	out.Topics = nil
 	out.Terms = nil
 	out.Reading = append([]model.Segment(nil), in.Reading...)
+	out.Exclude = nil
 	seen := map[string]bool{}
 	for i, s := range out.Reading {
+		// Un mot ecarte l'est tel qu'il a ete tape, lui aussi. Query le met
+		// entre guillemets s'il en faut.
+		if s.Role == model.RoleExcluded {
+			word := strings.Join(strings.Fields(strings.Trim(strings.ToLower(s.Text), "- ")), " ")
+			out.Reading[i].Value = word
+			out.Exclude = append(out.Exclude, word)
+			continue
+		}
 		if s.Role != model.RoleTerm {
 			continue
 		}

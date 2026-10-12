@@ -147,6 +147,11 @@ func Read(phrase string) model.Intent {
 
 	rd := newReader(phrase)
 
+	// What the phrase asks to keep out is read before anything else: the
+	// word after "pas de" or "sauf" is not something to search for.
+	readExclusions(rd, &out)
+	readLicense(rd, &out)
+
 	// Multi-word expressions are collapsed first. Translating them word by
 	// word would produce noise: "base de donnees" becomes "database data",
 	// and "data" alone drags in every repository that mentions it. They come
@@ -238,6 +243,13 @@ func Read(phrase string) model.Intent {
 	for _, loc := range wordRe.FindAllStringIndex(rd.rest, -1) {
 		start, end := loc[0], loc[1]
 		word := rd.rest[start:end]
+		// "-nmap" exclut nmap, comme sur la plupart des moteurs.
+		if strings.HasPrefix(word, "-") {
+			if term, termEnd := rd.excludedAt(start); term != "" && termEnd == end {
+				addExclusion(rd, &out, start, end, term)
+				continue
+			}
+		}
 		if lang, ok := languages[word]; ok && out.Language == "" {
 			out.Language = lang
 			out.Explain = append(out.Explain, "langage: "+lang)
@@ -311,6 +323,16 @@ func Query(in model.Intent) string {
 	var parts []string
 	parts = append(parts, strings.Join(in.Terms, " "))
 
+	// NOT only means something after a word to search for. A query made of
+	// qualifiers alone (the topic strategy) goes without, and the web layer
+	// removes the excluded repositories from what comes back anyway.
+	terms := len(in.Terms) > 0
+	if terms {
+		for _, x := range in.Exclude {
+			parts = append(parts, "NOT "+quoteIfNeeded(x))
+		}
+	}
+
 	// A language chosen among the results replaces the one read from the
 	// phrase: GitHub accepts several language qualifiers but ORs them, which
 	// would widen the search the user just asked to narrow.
@@ -334,6 +356,24 @@ func Query(in model.Intent) string {
 	}
 	if days := shorter(in.PushedWithinDays, in.Filters.PushedWithinDays); days > 0 {
 		parts = append(parts, "pushed:>="+daysAgo(days))
+	}
+	license := in.License
+	if in.Filters.License != "" {
+		license = in.Filters.License
+	}
+	if license != "" {
+		parts = append(parts, "license:"+license)
+	}
+	if in.Filters.Owner != "" {
+		parts = append(parts, "user:"+in.Filters.Owner)
+	}
+	if in.Filters.NoLists {
+		// Les listes "awesome" s'appellent ainsi et portent ces sujets. Le mot
+		// lui-meme n'est ecarte que si la question ne le contient pas.
+		if terms && !strings.Contains(strings.Join(in.Terms, " "), "awesome") {
+			parts = append(parts, "NOT awesome")
+		}
+		parts = append(parts, "-topic:awesome-list", "-topic:awesome")
 	}
 	if in.ExcludeForks {
 		parts = append(parts, "fork:false")

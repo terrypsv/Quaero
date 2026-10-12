@@ -131,6 +131,9 @@
   .puces b { padding: 0 4px; background: var(--acide); font-weight: 700; }
   .puces .origine { font-size: 13px; color: var(--gris); }
   .puces li.ajoute { padding-right: 4px; }
+  /* Un mot ecarte se lit a l'envers: encre pleine, sans le vert de ce qui
+     est cherche. */
+  .puces li.ecarte b { background: var(--encre); color: var(--papier); }
   .retirer {
     align-self: center; min-width: 28px; min-height: 28px; padding: 0; border: 0; background: none;
     color: var(--gris); font-size: 18px; line-height: 1; cursor: pointer;
@@ -153,7 +156,17 @@
   .ligne { display: grid; grid-template-columns: 100px minmax(0, 1fr); gap: 4px 12px; align-items: baseline; }
   .ligne > span { font-size: 13px; color: var(--gris); }
   .preciser .base { margin: 0; font-size: 12px; color: var(--pale); }
+  .preciser .choix { min-height: 30px; padding: 0 10px; font-size: 13px; }
   .filtres { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin-top: 12px; font-size: 13px; color: var(--gris); }
+  .filtres .portee { flex-basis: 100%; font-size: 12px; color: var(--pale); }
+
+  /* Ce que la phrase donnera, pendant qu'on la tape: rien n'est encore
+     depense. */
+  .apercu { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 8px; font-size: 13px; color: var(--gris); }
+  .apercu .puces { gap: 6px; }
+  .apercu .puces li { padding: 2px 8px; border-width: 1.5px; }
+  .apercu .puces b { font-weight: 600; }
+  .apercu .ignore { flex-basis: 100%; font-size: 13px; }
 
   .note { margin: 16px 0 0; padding: 10px 14px; background: var(--acide); font-size: 14px; }
   .erreur { margin: 0; padding: 14px 16px; background: var(--encre); color: var(--papier); }
@@ -228,6 +241,7 @@
              placeholder="un scanner de ports en go, encore maintenu">
       <button class="go" id="go" type="button">chercher</button>
     </div>
+    <div class="apercu" id="apercu" aria-live="polite" hidden></div>
     <div class="idees" id="suggest"></div>
     <details class="options" id="options">
       <summary>options <span class="etat" id="options-etat"></span></summary>
@@ -354,11 +368,24 @@ function searchCost() {
   return (state.precision === "approfondie" ? 5 : 1) + (state.scope === "elargi" ? 6 : 0);
 }
 
-var SCRIPT_LABEL = {
-  latin: "latin", chinois: "chinois", japonais: "japonais", coreen: "coréen",
-  cyrillique: "cyrillique", arabe: "arabe", hebreu: "hébreu", grec: "grec",
-  devanagari: "devanagari", thai: "thaï", indetermine: "sans description"
+// Langue de la description, detectee cote serveur (rank.DetectLanguage).
+var LANG_LABEL = {
+  anglais: "anglais", francais: "français", espagnol: "espagnol", portugais: "portugais",
+  allemand: "allemand", italien: "italien", vietnamien: "vietnamien", russe: "russe",
+  ukrainien: "ukrainien", chinois: "chinois", japonais: "japonais", coreen: "coréen",
+  arabe: "arabe", hebreu: "hébreu", grec: "grec", hindi: "hindi", thai: "thaï",
+  autre: "autre", aucune: "sans description"
 };
+
+function langOf(r) { return r.lang || "aucune"; }
+
+// Les cles de licence GitHub, ecrites comme on les lit.
+var LICENSE_LABEL = {
+  "mit": "MIT", "apache-2.0": "Apache-2.0", "gpl-3.0": "GPL-3.0", "gpl-2.0": "GPL-2.0",
+  "agpl-3.0": "AGPL-3.0", "lgpl-3.0": "LGPL-3.0", "lgpl-2.1": "LGPL-2.1", "bsd-3-clause": "BSD-3-Clause",
+  "bsd-2-clause": "BSD-2-Clause", "mpl-2.0": "MPL-2.0", "isc": "ISC", "unlicense": "Unlicense"
+};
+function licenseLabel(key) { return LICENSE_LABEL[key] || key; }
 
 // Les criteres proposes pour resserrer une liste trop longue. Les seuils sont
 // ceux qui separent des groupes de depots de taille comparable sur GitHub.
@@ -385,6 +412,8 @@ function facet(s) {
     case "recence":  return ["mis à jour", since(s.value)];
     case "forks":    return ["forks", "inclus"];
     case "archives": return ["archivés", "inclus"];
+    case "exclu":    return ["écarté", s.value];
+    case "licence":  return ["licence", licenseLabel(s.value)];
   }
   return null;
 }
@@ -407,10 +436,12 @@ function quoteList(words) {
   return q.slice(0, -1).join(", ") + " et " + q[q.length - 1];
 }
 
-function noFilters() { return { language: "", topics: [], min_stars: 0, pushed_within_days: 0 }; }
+function noFilters() {
+  return { language: "", topics: [], min_stars: 0, pushed_within_days: 0, license: "", owner: "", no_lists: false };
+}
 
 var state = {
-  sort: "pertinence", page: 1, script: "tous",
+  sort: "pertinence", page: 1, lang: "toutes", searched: "",
   scope: "anglais", precision: "approfondie", data: null,
   filters: noFilters(), quota: null
 };
@@ -498,7 +529,8 @@ function setOption(o) {
   if (o.precision) state.precision = o.precision;
   renderOptions();
   drawQuota();
-  if ($("q").value.trim()) run({ page: 1 });
+  if ($("q").value.trim() === state.searched && state.searched) run({ page: 1 });
+  else preview();
 }
 
 // ---- quota -----------------------------------------------------------------
@@ -565,6 +597,7 @@ function init() {
   $("q").addEventListener("keydown", function (e) {
     if (e.key === "Enter") run({ page: 1, fresh: true });
   });
+  $("q").addEventListener("input", schedulePreview);
   fetch("/api/version").then(function (r) { return r.json(); })
     .then(function (d) { $("version").textContent = d.version || ""; })
     .catch(function () {});
@@ -578,7 +611,39 @@ function filterParams(f) {
   f.topics.forEach(function (t) { p += "&topic=" + encodeURIComponent(t); });
   if (f.min_stars > 0) p += "&stars=" + f.min_stars;
   if (f.pushed_within_days > 0) p += "&days=" + f.pushed_within_days;
+  if (f.license) p += "&license=" + encodeURIComponent(f.license);
+  if (f.owner) p += "&owner=" + encodeURIComponent(f.owner);
+  if (f.no_lists) p += "&nolists=1";
   return p;
+}
+
+// ---- apercu ----------------------------------------------------------------
+
+// Pendant la frappe, la phrase est lue par /api/read, qui ne demande rien a
+// GitHub: on voit ce qui sera cherche, ecarte ou ignore avant de depenser le
+// quota. L'apercu disparait des que la phrase est celle des resultats.
+var previewTimer = null, previewSeq = 0;
+
+function schedulePreview() {
+  clearTimeout(previewTimer);
+  previewTimer = setTimeout(preview, 250);
+}
+
+function preview() {
+  var phrase = $("q").value.trim(), box = $("apercu");
+  if (!phrase || phrase === state.searched) { box.hidden = true; box.innerHTML = ""; return; }
+  var seq = ++previewSeq;
+  fetch("/api/read?q=" + encodeURIComponent(phrase) + "&scope=" + encodeURIComponent(state.scope))
+    .then(function (r) { return r.json(); })
+    .then(function (data) {
+      if (seq !== previewSeq || data.error) return;
+      var read = reading(data.intent || {});
+      box.innerHTML = '<span>Quaero cherchera</span>'
+        + (read.chips ? '<ul class="puces">' + read.chips + "</ul>" : "<span>rien, aucun mot-clé reconnu</span>")
+        + read.notes;
+      box.hidden = false;
+    })
+    .catch(function () {});
 }
 
 // Une nouvelle question repart sans les criteres ajoutes a la precedente.
@@ -588,7 +653,7 @@ function run(opts) {
   var phrase = $("q").value.trim();
   if (!phrase) return;
 
-  if (opts.fresh) state.filters = noFilters();
+  if (opts.fresh) { state.filters = noFilters(); state.lang = "toutes"; }
   if (opts.page) state.page = opts.page;
   if (opts.sort) { state.sort = opts.sort; state.page = 1; }
 
@@ -605,6 +670,8 @@ function run(opts) {
   fetch(url)
     .then(function (r) { return r.json(); })
     .then(function (data) {
+      state.searched = phrase;
+      $("apercu").hidden = true;
       renderReadback(data);
       if (data.error) {
         $("out").innerHTML = '<p class="erreur"><b>erreur</b>' + esc(data.error) + "</p>";
@@ -616,10 +683,10 @@ function run(opts) {
       var f = (data.intent || {}).filters || {};
       state.filters = {
         language: f.language || "", topics: (f.topics || []).slice(),
-        min_stars: f.min_stars || 0, pushed_within_days: f.pushed_within_days || 0
+        min_stars: f.min_stars || 0, pushed_within_days: f.pushed_within_days || 0,
+        license: f.license || "", owner: f.owner || "", no_lists: !!f.no_lists
       };
       state.data = data;
-      state.script = "tous";
       render();
     })
     .catch(function (err) {
@@ -634,6 +701,9 @@ function addFilter(kind, value) {
   if (kind === "topic" && f.topics.indexOf(value) < 0 && f.topics.length < MAX_FILTER_TOPICS) f.topics.push(value);
   if (kind === "stars") f.min_stars = parseInt(value, 10);
   if (kind === "days") f.pushed_within_days = parseInt(value, 10);
+  if (kind === "license") f.license = value;
+  if (kind === "owner") f.owner = value;
+  if (kind === "lists") f.no_lists = true;
   run({ page: 1 });
 }
 
@@ -643,43 +713,59 @@ function removeFilter(kind, value) {
   if (kind === "topic") f.topics = f.topics.filter(function (t) { return t !== value; });
   if (kind === "stars") f.min_stars = 0;
   if (kind === "days") f.pushed_within_days = 0;
+  if (kind === "license") f.license = "";
+  if (kind === "owner") f.owner = "";
+  if (kind === "lists") f.no_lists = false;
   run({ page: 1 });
 }
 
-// Ce que Quaero a compris, critere par critere, puis les criteres ajoutes en
-// cliquant (retirables), puis les mots laisses de cote et pourquoi.
-function renderReadback(data) {
-  var it = data.intent || {};
+// reading dit ce que la lecture de la phrase a donne: les criteres, puis les
+// mots laisses de cote et pourquoi. Elle sert aux resultats et a l'apercu.
+function reading(it) {
   var chips = "", generic = [], cut = [];
   (it.reading || []).forEach(function (s) {
     var f = facet(s);
     if (f) {
       var origin = s.role === "terme" && plain(s.text) !== plain(s.value).replace(/"/g, "")
         ? '<span class="origine">' + esc(s.text) + "</span>" : "";
-      chips += '<li><span class="type">' + esc(f[0]) + "</span><b>" + esc(f[1]) + "</b>" + origin + "</li>";
+      chips += '<li' + (s.role === "exclu" ? ' class="ecarte"' : "") + '><span class="type">' + esc(f[0])
+        + "</span><b>" + esc(f[1]) + "</b>" + origin + "</li>";
       return;
     }
     if (s.role === "generique") generic.push(s.text);
-    if (s.role === "limite") cut.push(s.text);
+    if (s.role === "limite") cut.push(s.text.replace(/^-/, ""));
   });
+  var notes = "";
+  if (generic.length) {
+    notes += '<p class="ignore">' + esc(quoteList(generic)) + (generic.length > 1
+      ? " ne sont pas cherchés, ce sont des mots trop généraux que les dépôts n'écrivent pas dans leur description."
+      : " n'est pas cherché, c'est un mot trop général que les dépôts n'écrivent pas dans leur description.") + "</p>";
+  }
+  if (cut.length) {
+    notes += '<p class="ignore">' + esc(quoteList(cut)) + (cut.length > 1 ? " ne sont pas pris en compte" : " n'est pas pris en compte")
+       + ", Quaero garde au plus quatre mots-clés et quatre mots écartés pour ne pas vider les résultats.</p>";
+  }
+  return { chips: chips, notes: notes };
+}
+
+// Ce que Quaero a compris pour les resultats affiches: la lecture de la
+// phrase, puis les criteres ajoutes en cliquant, retirables.
+function renderReadback(data) {
+  var it = data.intent || {};
+  var read = reading(it), chips = read.chips;
 
   var fl = it.filters || {};
   if (fl.language) chips += added("langage", fl.language, "lang", fl.language);
   (fl.topics || []).forEach(function (t) { chips += added("sujet", t, "topic", t); });
   if (fl.pushed_within_days > 0) chips += added("mis à jour", since(fl.pushed_within_days), "days", fl.pushed_within_days);
   if (fl.min_stars > 0) chips += added("popularité", stars(fl.min_stars), "stars", fl.min_stars);
+  if (fl.license) chips += added("licence", licenseLabel(fl.license), "license", fl.license);
+  if (fl.owner) chips += added("auteur", fl.owner, "owner", fl.owner);
+  if (fl.no_lists) chips += added("listes awesome", "écartées", "lists", "1");
 
   var h = "";
   if (chips) h += '<h2>Ce que Quaero a compris</h2><ul class="puces">' + chips + "</ul>";
-  if (generic.length) {
-    h += '<p class="ignore">' + esc(quoteList(generic)) + (generic.length > 1
-      ? " ne sont pas cherchés, ce sont des mots trop généraux que les dépôts n'écrivent pas dans leur description."
-      : " n'est pas cherché, c'est un mot trop général que les dépôts n'écrivent pas dans leur description.") + "</p>";
-  }
-  if (cut.length) {
-    h += '<p class="ignore">' + esc(quoteList(cut)) + (cut.length > 1 ? " ne sont pas cherchés" : " n'est pas cherché")
-       + ", Quaero garde les quatre premiers mots-clés pour ne pas vider les résultats.</p>";
-  }
+  h += read.notes;
   if (data.query) h += '<p class="requete">requête envoyée à GitHub <code>' + esc(data.query) + "</code></p>";
   $("readback").innerHTML = h ? '<section class="compris" aria-label="Ce que Quaero a compris">' + h + "</section>" : "";
   bind("#readback [data-remove]", function (b) {
@@ -692,6 +778,12 @@ function added(type, shown, kind, value) {
   return '<li class="ajoute"><span class="type">' + esc(type) + "</span><b>" + esc(shown) + "</b>"
     + '<button type="button" class="retirer" data-remove="' + esc(kind + "|" + value) + '" '
     + 'aria-label="retirer le critère ' + esc(type + " " + shown) + '" title="retirer ce critère">×</button></li>';
+}
+
+// isList reconnait une liste awesome, comme le serveur (webui.isList).
+function isList(r) {
+  if (/^awesome/i.test(r.name || "")) return true;
+  return (r.topics || []).some(function (t) { return t === "awesome" || t === "awesome-list" || t === "awesome-lists"; });
 }
 
 // count compte les valeurs portees par les depots, les plus frequentes
@@ -745,6 +837,35 @@ function refineBlock(data, repos) {
   }).filter(Boolean);
   if (pop.length) rows.push(["popularité", pop]);
 
+  // GitHub rend NOASSERTION pour une licence qu'il ne reconnait pas: ce n'est
+  // pas un critere cherchable.
+  if (!it.license && !fl.license) {
+    var lics = count(repos, function (r) {
+      var k = (r.license || "").toLowerCase();
+      return k && k !== "noassertion" && k !== "other" ? [k] : [];
+    }).filter(function (e) { return useful(e[1]); }).slice(0, 5);
+    if (lics.length) rows.push(["licence", lics.map(function (e) { return btn("data-add", "license|" + e[0], licenseLabel(e[0]), false, e[1]); })]);
+  }
+
+  // Un auteur qui revient plusieurs fois dans la liste est souvent celui qui
+  // fait reference sur le sujet.
+  if (!fl.owner) {
+    var owners = count(repos, function (r) { return r.owner ? [r.owner] : []; })
+      .filter(function (e) { return e[1] >= 2 && useful(e[1]); }).slice(0, 5);
+    if (owners.length) rows.push(["auteur", owners.map(function (e) { return btn("data-add", "owner|" + e[0], e[0], false, e[1]); })]);
+  }
+
+  // Les listes awesome sont des pages de liens vers des outils, pas des
+  // outils: on propose de les ecarter des qu'il y en a.
+  if (!fl.no_lists) {
+    var lists = repos.filter(isList).length;
+    if (lists > 0) rows.push(["listes", [btn("data-add", "lists|1", "écarter les listes awesome", false, lists)]]);
+  }
+
+  // Du plus discriminant au plus accessoire.
+  var order = ["langage", "sujet", "listes", "mis à jour", "popularité", "licence", "auteur"];
+  rows.sort(function (a, b) { return order.indexOf(a[0]) - order.indexOf(b[0]); });
+
   var h = '<section class="preciser" aria-label="Resserrer la liste">';
   if (total > (data.reachable || 0)) {
     h += '<p class="aide"><b>' + fmt(total) + " dépôts</b> correspondent, GitHub ne rend que les "
@@ -773,13 +894,9 @@ function render() {
     return;
   }
 
-  var scripts = {};
-  repos.forEach(function (r) {
-    var sc = r.script || "indetermine";
-    scripts[sc] = (scripts[sc] || 0) + 1;
-  });
+  var langs = count(repos, function (r) { return [langOf(r)]; });
   var shown = repos.filter(function (r) {
-    return state.script === "tous" || (r.script || "indetermine") === state.script;
+    return state.lang === "toutes" || langOf(r) === state.lang;
   });
 
   var total = data.total || 0;
@@ -794,16 +911,18 @@ function render() {
   // Tant que tout n'est pas charge, il y a de quoi resserrer.
   if (total > repos.length) h += refineBlock(data, repos);
 
-  // L'ecriture des descriptions n'existe pas comme critere chez GitHub: ce
-  // filtre-ci trie la page affichee, sans nouvelle recherche.
-  var scriptKeys = Object.keys(scripts);
-  if (scriptKeys.length > 1) {
-    h += '<div class="filtres"><span>description en</span><div class="boutons" role="group" aria-label="Filtrer par écriture">'
-       + btn("data-script", "tous", "toutes écritures", state.script === "tous", null);
-    scriptKeys.sort(function (a, b) { return scripts[b] - scripts[a]; }).forEach(function (sc) {
-      h += btn("data-script", sc, SCRIPT_LABEL[sc] || sc, state.script === sc, scripts[sc]);
+  // GitHub ne connait pas la langue des descriptions: Quaero la detecte, et
+  // ce filtre-ci agit sur la page affichee, sans nouvelle recherche. Le choix
+  // reste d'une page a l'autre tant que la question ne change pas.
+  var selectedMissing = state.lang !== "toutes" && !langs.some(function (e) { return e[0] === state.lang; });
+  if (langs.length > 1 || state.lang !== "toutes") {
+    h += '<div class="filtres"><span>langue de la description</span><div class="boutons" role="group" aria-label="Filtrer par langue de la description">'
+       + btn("data-lang", "toutes", "toutes", state.lang === "toutes", repos.length);
+    langs.forEach(function (e) {
+      h += btn("data-lang", e[0], LANG_LABEL[e[0]] || e[0], state.lang === e[0], e[1]);
     });
-    h += "</div></div>";
+    if (selectedMissing) h += btn("data-lang", state.lang, LANG_LABEL[state.lang] || state.lang, true, 0);
+    h += '</div><span class="portee">Détectée par Quaero sur cette page, sans nouvelle recherche.</span></div>';
   }
 
   if (data.note) h += '<p class="note">' + esc(data.note) + "</p>";
@@ -824,7 +943,7 @@ function render() {
     var parts = b.getAttribute("data-add").split("|");
     addFilter(parts[0], parts.slice(1).join("|"));
   });
-  bind("#out [data-script]", function (b) { state.script = b.getAttribute("data-script"); render(); });
+  bind("#out [data-lang]", function (b) { state.lang = b.getAttribute("data-lang"); render(); });
   bind("#out [data-page]", function (b) { run({ page: parseInt(b.getAttribute("data-page"), 10) }); });
 }
 
@@ -877,8 +996,8 @@ function card(r, position) {
   if (r.license) h += "<span>" + esc(r.license) + "</span>";
   var when = age(health.days_since_push);
   if (when) h += "<span>" + esc(when) + "</span>";
-  if (r.script && r.script !== "latin" && r.script !== "indetermine") {
-    h += "<span>description en " + esc(SCRIPT_LABEL[r.script] || r.script) + "</span>";
+  if (r.lang && r.lang !== "anglais" && r.lang !== "autre") {
+    h += "<span>description en " + esc(LANG_LABEL[r.lang] || r.lang) + "</span>";
   }
   h += "</div>";
 
