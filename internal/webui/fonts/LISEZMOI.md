@@ -7,8 +7,8 @@ aucune ressource extérieure.
 
 | Fichier | Usage | Licence |
 |---|---|---|
-| `archivo.woff2` | texte, titres et logotype | `OFL-Archivo.txt` |
-| `jetbrains-mono.woff2` | requêtes et chemins | `OFL-JetBrainsMono.txt` |
+| `geist.woff2` | texte, titres, logotype et exemples | `OFL-Geist.txt` |
+| `jetbrains-mono.woff2` | requête envoyée à GitHub | `OFL-JetBrainsMono.txt` |
 
 Les deux polices sont sous licence SIL Open Font License 1.1, qui autorise
 leur distribution avec un logiciel tant que la licence les accompagne.

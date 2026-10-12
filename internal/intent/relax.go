@@ -4,7 +4,6 @@
 package intent
 
 import (
-	"strconv"
 	"strings"
 
 	"github.com/terrypsv/Quaero/internal/model"
@@ -38,35 +37,38 @@ type Relaxation struct {
 func Ladder(in model.Intent) []Relaxation {
 	var steps []Relaxation
 
+	// A step whose query is the one already tried costs a call and says
+	// something false. It happens when a criterion read from the phrase is
+	// also held by a filter the user chose: relaxing the first leaves the
+	// second, and the query does not move.
+	last := Query(in)
+	add := func(current model.Intent, reason string) {
+		q := Query(current)
+		if q == last {
+			return
+		}
+		last = q
+		steps = append(steps, Relaxation{Intent: current, Query: q, Reason: reason})
+	}
+
 	current := in
 
 	if current.PushedWithinDays > 0 {
 		current.PushedWithinDays = 0
-		steps = append(steps, Relaxation{
-			Intent: current,
-			Query:  Query(current),
-			Reason: "sans la contrainte de fraicheur",
-		})
+		add(current, "sans la contrainte de fraîcheur")
 	}
 
 	if current.MinStars > 0 {
 		current.MinStars = 0
-		steps = append(steps, Relaxation{
-			Intent: current,
-			Query:  Query(current),
-			Reason: "sans le plancher d'etoiles",
-		})
+		add(current, "sans le minimum d'étoiles")
 	}
 
 	// Topics are a guess made from the shape of a word, not something the user
-	// asked for, so they cost nothing to give up.
+	// asked for, so they cost nothing to give up. Topics the user clicked live
+	// in Filters and are never touched here.
 	if len(current.Topics) > 0 {
 		current.Topics = nil
-		steps = append(steps, Relaxation{
-			Intent: current,
-			Query:  Query(current),
-			Reason: "sans le filtre par sujet",
-		})
+		add(current, "sans le filtre par sujet")
 	}
 
 	// Dropping terms from the end: the first words of a phrase usually carry
@@ -74,23 +76,15 @@ func Ladder(in model.Intent) []Relaxation {
 	for len(current.Terms) > 1 {
 		dropped := current.Terms[len(current.Terms)-1]
 		current.Terms = current.Terms[:len(current.Terms)-1]
-		steps = append(steps, Relaxation{
-			Intent: current,
-			Query:  Query(current),
-			Reason: "sans le terme " + strconv.Quote(dropped),
-		})
+		add(current, "sans le mot-clé « "+strings.Trim(dropped, `"`)+" »")
 	}
 
 	// Last resort: the language qualifier alone with the remaining term. If
 	// this finds nothing either, the thing genuinely is not there.
-	if current.Language != "" && len(current.Terms) == 1 {
+	if (current.Language != "" || current.Filters.Language != "") && len(current.Terms) == 1 {
 		loose := current
 		loose.ExcludeForks = false
-		steps = append(steps, Relaxation{
-			Intent: loose,
-			Query:  Query(loose),
-			Reason: "forks inclus",
-		})
+		add(loose, "forks inclus")
 	}
 
 	return steps
@@ -101,6 +95,6 @@ func Describe(reasons []string) string {
 	if len(reasons) == 0 {
 		return ""
 	}
-	return "Rien trouve avec la demande exacte. Resultats obtenus " +
+	return "Rien trouvé avec la demande exacte. Résultats obtenus " +
 		strings.Join(reasons, ", puis ") + "."
 }

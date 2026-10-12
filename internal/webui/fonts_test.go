@@ -12,7 +12,7 @@ import (
 	"testing"
 )
 
-var polices = []string{"archivo.woff2", "jetbrains-mono.woff2"}
+var polices = []string{"geist.woff2", "jetbrains-mono.woff2"}
 
 // Les polices sont produites par scripts/polices.py puis versionnees. Un
 // binaire sans elles s'afficherait avec celles du systeme, sans que rien ne
@@ -28,7 +28,7 @@ func TestPolicesEmbarquees(t *testing.T) {
 			t.Errorf("%s n'est pas un fichier woff2", name)
 		}
 	}
-	for _, lic := range []string{"OFL-Archivo.txt", "OFL-JetBrainsMono.txt"} {
+	for _, lic := range []string{"OFL-Geist.txt", "OFL-JetBrainsMono.txt"} {
 		if _, err := fontFiles.ReadFile("fonts/" + lic); err != nil {
 			t.Errorf("licence %s absente: les polices OFL voyagent avec leur licence", lic)
 		}
@@ -50,7 +50,7 @@ func TestPoliceServie(t *testing.T) {
 // controle, ni rien en dehors du dossier.
 func TestPoliceRefusee(t *testing.T) {
 	for _, p := range []string{
-		"/fonts/", "/fonts/OFL-Archivo.txt", "/fonts/SHA256SUMS", "/fonts/LISEZMOI.md",
+		"/fonts/", "/fonts/OFL-Geist.txt", "/fonts/SHA256SUMS", "/fonts/LISEZMOI.md",
 		"/fonts/inconnue.woff2", "/fonts/sous/jetbrains-mono.woff2", "/fonts/..%2fserver.go",
 	} {
 		rec := httptest.NewRecorder()
@@ -76,6 +76,20 @@ func TestPagesSansRessourceExterieure(t *testing.T) {
 	for name, page := range map[string][]byte{"index.html": indexHTML} {
 		if loc := externe.FindIndex(page); loc != nil {
 			t.Errorf("%s charge une ressource exterieure: %q", name, page[loc[0]:loc[1]+20])
+		}
+	}
+}
+
+// La page ne demande que des polices presentes dans le binaire: une police
+// absente tomberait sans bruit sur celle du systeme.
+func TestPageDemandeDesPolicesEmbarquees(t *testing.T) {
+	urls := regexp.MustCompile(`url\("/fonts/([^"]+)"\)`).FindAllStringSubmatch(string(indexHTML), -1)
+	if len(urls) == 0 {
+		t.Fatal("aucune police declaree dans la page")
+	}
+	for _, m := range urls {
+		if _, err := fontFiles.ReadFile("fonts/" + m[1]); err != nil {
+			t.Errorf("la page demande %s, absente du binaire", m[1])
 		}
 	}
 }

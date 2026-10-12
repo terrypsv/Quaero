@@ -26,12 +26,12 @@ func TestLadderRelaxesFromLeastToMostMeaningful(t *testing.T) {
 	}
 
 	// La fraicheur est une preference, pas la question: elle part en premier.
-	if !strings.Contains(steps[0].Reason, "fraicheur") {
+	if !strings.Contains(steps[0].Reason, "fraîcheur") {
 		t.Errorf("premiere etape = %q, la fraicheur devait ceder en premier", steps[0].Reason)
 	}
 	// Les termes sont la question elle-meme: ils partent en dernier.
 	last := steps[len(steps)-1].Reason
-	if !strings.Contains(last, "terme") && !strings.Contains(last, "forks") {
+	if !strings.Contains(last, "mot-clé") && !strings.Contains(last, "forks") {
 		t.Errorf("derniere etape = %q, les termes devaient ceder en dernier", last)
 	}
 }
@@ -58,8 +58,8 @@ func TestLadderIsEmptyWhenNothingToRelax(t *testing.T) {
 // Un resultat obtenu apres desserrage reste un resultat; obtenu en silence, ce
 // serait un mensonge.
 func TestDescribeNamesWhatWasGivenUp(t *testing.T) {
-	got := Describe([]string{"sans la contrainte de fraicheur", "sans le plancher d'etoiles"})
-	if !strings.Contains(got, "fraicheur") || !strings.Contains(got, "plancher") {
+	got := Describe([]string{"sans la contrainte de fraîcheur", "sans le minimum d'étoiles"})
+	if !strings.Contains(got, "fraîcheur") || !strings.Contains(got, "minimum") {
 		t.Errorf("description incomplete: %q", got)
 	}
 	if Describe(nil) != "" {

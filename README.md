@@ -42,12 +42,13 @@ Chaque résultat porte donc un verdict de santé:
 Un dépôt dont la date d'envoi est absente n'est jamais déclaré sain: affirmer
 la santé à partir d'une donnée manquante serait pire que ne rien dire.
 
-## La phrase est en français, la requête part en anglais
+## La phrase en français ou en anglais, la requête en anglais
 
 GitHub indexe des noms de dépôts, des descriptions et des README, et ils sont
 massivement en anglais. Une phrase tapée en français doit donc franchir la
 barrière de langue avant de devenir une requête, sinon elle ne correspond à
-rien.
+rien. Une phrase tapée en anglais passe telle quelle, ses mots vides sont
+écartés de la même façon.
 
 Deux mécanismes s'en chargent, et le premier compte plus que le second.
 
@@ -65,9 +66,12 @@ de GitHub.
 Le vocabulaire de la sécurité est le mieux couvert, puisque c'est le domaine
 de travail de Quaero. "scanner de ports" devient `port-scanner`, "détection
 d'intrusion" devient `ids`, "pot de miel" devient `honeypot`, "rétro-ingénierie"
-devient `reverse-engineering`. Une expression connue passe avant les mots de
-fraîcheur qu'elle contient, "active directory" est un produit et pas une
-demande de projets actifs.
+devient `reverse-engineering`, "commande et contrôle" devient `c2`. Une
+expression connue passe avant les mots de fraîcheur qu'elle contient, "active
+directory" est un produit et pas une demande de projets actifs, et "reverse
+shell" n'est pas une demande de dépôts écrits en Shell. "analyse" se lit comme
+un nom (analyse de binaires, de journaux), "analyser" reste le verbe qu'on
+emploie pour un format.
 
 Chaque mot revient avec ce qu'il a donné (mot-clé, langage, popularité,
 fraîcheur, mot générique laissé de côté). L'interface affiche ce que Quaero a
@@ -102,9 +106,9 @@ silence après desserrage serait un mensonge.
 go build -o quaero ./cmd/quaero
 ```
 
-Un jeton GitHub est obligatoire. Sans lui, l'API limite à 60 requêtes par
-heure, ce qu'une seule session épuise. Le jeton n'a besoin d'aucune permission:
-la recherche publique n'en demande pas.
+Un jeton GitHub est obligatoire. Sans lui, la recherche est limitée à 10
+requêtes par minute, deux recherches approfondies. Le jeton n'a besoin d'aucune
+permission: la recherche publique n'en demande pas.
 
 Le plus simple est de l'enregistrer une fois:
 
@@ -130,8 +134,19 @@ révoqué ou mal copié, alors un refus nomme l'endroit où le jeton a été lu 
 remède qui va avec (remplacer la variable, ou `-save-token` / `-forget-token`
 pour le fichier).
 
-Le quota restant est affiché à chaque recherche, pour qu'une coupure imminente
-se voie venir plutôt que de surprendre.
+Le quota de recherche reste affiché en haut de la page, dès l'ouverture, pour
+qu'une coupure se voie venir plutôt que de surprendre. GitHub autorise 30
+requêtes de recherche par minute à tout compte authentifié, quel que soit
+l'abonnement (GitHub Pro et le Student Developer Pack n'y changent rien), et le
+compteur se remplit à la fin de chaque minute. Une recherche approfondie coûte
+5 requêtes, une rapide 1, l'option toutes langues jusqu'à 6 de plus. La jauge
+dit combien de recherches il reste et dans combien de secondes le quota sera
+plein, et passe en négatif quand il ne suffit plus pour une recherche. Il est
+lu sur `/rate_limit`, que GitHub ne décompte pas.
+
+Les pages reçues de GitHub sont gardées dix minutes en mémoire. Changer de tri,
+revenir à une page ou retirer un critère ne coûte donc aucune requête, le
+classement se faisant dans Quaero et non chez GitHub.
 
 L'interface s'ouvre seule dans le navigateur par défaut, sur
 `http://127.0.0.1:7777`. `-no-browser` laisse le navigateur fermé, l'adresse
@@ -143,23 +158,24 @@ qu'il tourne sur un réseau qui n'est pas le sien.
 ### L'interface
 
 Papier, encre, et un vert acide qui marque ce que Quaero a compris. Une phrase
-en tête de page dit ce qu'est l'outil. L'écran montre ensuite une chose à la
-fois, la question puis les dépôts. Après une recherche, chaque critère compris
-s'affiche avec sa valeur (mot-clé, langage, popularité, fraîcheur), les mots
-laissés de côté sont expliqués, et la requête envoyée reste visible.
+en tête de page dit ce qu'est l'outil, le quota de recherche reste en vue à
+côté du logotype. Huit exemples tirés de la sécurité sont proposés sous la
+barre, pris dans une cinquantaine, et un test vérifie que chacun se lit sans
+mot perdu. Après une recherche, chaque critère compris s'affiche avec sa
+valeur (mot-clé, langage, popularité, fraîcheur), les mots laissés de côté
+sont expliqués, et la requête envoyée reste visible.
 
 Chaque dépôt tient en trois lignes, nom et santé, description, puis étoiles,
 langage, licence et date du dernier envoi. La santé se lit en quatre carrés,
 pleins pour un projet actif, vides pour un projet archivé, sans avoir besoin
 de la couleur. Les raisons du rang et du verdict se déplient sous chaque
-dépôt, avec de quoi affiner la phrase. Les options de recherche (langue des
-dépôts, précision) restent repliées sous la barre. Les exemples proposés viennent
-tous de la sécurité, et un test vérifie que chacun se lit sans mot perdu.
+dépôt. Les options de recherche (langue des dépôts, précision) restent repliées
+sous la barre, leur réglage affiché à côté.
 
-Les polices (Archivo pour le texte, les titres et le logotype, JetBrains Mono
-pour ce qui se recopie) sont embarquées
-dans le binaire, puisque la politique de contenu n'autorise aucune ressource
-extérieure. Elles sont sous licence SIL OFL 1.1, livrées avec leur licence dans
+Les polices (Geist pour le texte, les titres, le logotype et les exemples,
+JetBrains Mono pour la requête à recopier) sont utilisées sans étirement et
+embarquées dans le binaire, puisque la politique de contenu n'autorise aucune
+ressource extérieure. Elles sont sous licence SIL OFL 1.1, livrées avec leur licence dans
 `internal/webui/fonts/`. `python scripts/polices.py` les récupère, à relancer
 seulement pour en changer.
 
@@ -223,8 +239,21 @@ correspondances. Une recherche qui annonce onze mille dépôts n'en rend donc
 accessibles que mille, et l'interface affiche les deux chiffres. Promettre des
 pages qui reviendraient vides serait pire que d'annoncer la limite.
 
-Cliquer un langage ou un sujet l'ajoute à la phrase et relance la recherche:
-c'est le raffinement qu'on veut faire après avoir vu une première page.
+## Resserrer une liste trop longue
+
+Tant que tout n'est pas chargé, un bloc propose de resserrer la liste avec ce
+que contiennent les dépôts chargés eux-mêmes, langages, sujets, date du dernier
+envoi et popularité, chacun avec le nombre de dépôts qui le portent. Quand la
+recherche dépasse les mille résultats que GitHub rend, le bloc le dit.
+
+Un choix devient un qualificatif GitHub (`language:`, `topic:`, `pushed:`,
+`stars:`) appliqué à toutes les formulations de la question et aux autres
+langues. Il réduit donc le total, pas seulement la page affichée. Le langage
+choisi remplace celui de la phrase, et pour les étoiles ou la fraîcheur le plus
+exigeant des deux l'emporte. Les critères ajoutés s'affichent avec ce que
+Quaero a compris et se retirent d'un clic. Le desserrage ne les retire jamais,
+ce sont des exigences et non des suppositions. Une nouvelle question repart
+sans eux.
 
 ## Le classement
 
@@ -313,7 +342,7 @@ internal/rank/      pertinence et santé, deux jugements distincts
 internal/audit/     santé des dépôts d'une requête, vers le schéma de constat
 internal/codescan/  audit de code d'un dépôt local (govulncheck, gosec)
 internal/finding/   schéma de constat partagé par la suite
-internal/webui/     serveur HTTP, page et polices embarquées
+internal/webui/     serveur HTTP, cache des pages, page et polices embarquées
 scripts/polices.py  récupération des polices de l'interface
 cmd/quaero/         point d'entrée
 ```

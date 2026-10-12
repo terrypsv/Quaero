@@ -136,6 +136,19 @@ func TestVocabulaireCyber(t *testing.T) {
 		"radio logicielle":                         "sdr",
 		"rançongiciel":                             "ransomware",
 		"tests d'intrusion d'applications mobiles": "pentest",
+		"énumération de sous-domaines":             "subdomain",
+		"attaques kerberos":                        "attack",
+		"serveur de commande et contrôle":          "c2",
+		"règles sigma":                             "sigma",
+		"authentification à deux facteurs":         "2fa",
+		"surface d'attaque externe":                "attack-surface",
+		"exploits du noyau linux":                  "kernel",
+		"analyse de binaires elf":                  "binary",
+		"désobfuscation javascript":                "deobfuscation",
+		"analyse de dump mémoire":                  "memory-dump",
+		"cartographie réseau":                      "network-mapping",
+		"signature de code":                        "code-signing",
+		"chiffrement post-quantique":               "post-quantum",
 	}
 	for phrase, want := range cases {
 		t.Run(phrase, func(t *testing.T) {
@@ -168,5 +181,24 @@ func TestExpressionAvantFacettes(t *testing.T) {
 	}
 	if got := Read("règles yara").Terms; !hasTerm(got, "yara") || hasTerm(got, "regles") {
 		t.Errorf("règles yara: termes = %v", got)
+	}
+}
+
+// "analyse" est un nom: l'analyse de binaires ou de journaux n'est pas un
+// parseur. Le verbe "analyser", lui, se dit encore d'un format.
+func TestAnalyseNEstPasUnParseur(t *testing.T) {
+	if got := Read("analyse de binaires elf").Terms; hasTerm(got, "parser") || !hasTerm(got, "analysis") {
+		t.Errorf("analyse de binaires: termes = %v", got)
+	}
+	if got := Read("analyser du yaml").Terms; !hasTerm(got, "parse") {
+		t.Errorf("analyser du yaml: termes = %v", got)
+	}
+}
+
+// "shell" ne doit pas devenir un langage dans un reverse shell.
+func TestReverseShellNEstPasUnLangage(t *testing.T) {
+	in := Read("reverse shell en python")
+	if in.Language != "Python" || !hasTerm(in.Terms, "reverse-shell") {
+		t.Errorf("langage = %q, termes = %v", in.Language, in.Terms)
 	}
 }

@@ -176,3 +176,45 @@ func TestUnreadableBodyIsReported(t *testing.T) {
 		t.Error("une reponse illisible doit remonter une erreur")
 	}
 }
+
+// Le quota de recherche se lit sans le depenser, dans la rubrique search de
+// /rate_limit et non dans core.
+func TestSearchQuotaReadsTheSearchBucket(t *testing.T) {
+	reset := time.Now().Add(40 * time.Second).Unix()
+	c, srv := testClient(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/rate_limit" {
+			t.Errorf("chemin = %q", r.URL.Path)
+		}
+		if got := r.Header.Get("Authorization"); got != "Bearer jeton-de-test" {
+			t.Errorf("en-tete d'authentification = %q", got)
+		}
+		_, _ = w.Write([]byte(`{"resources": {
+			"core": {"limit": 5000, "remaining": 4999, "reset": 1},
+			"search": {"limit": 30, "remaining": 25, "reset": ` + strconv.FormatInt(reset, 10) + `}
+		}}`))
+	})
+	defer srv.Close()
+
+	rate, err := c.SearchQuota(context.Background())
+	if err != nil {
+		t.Fatalf("SearchQuota: %v", err)
+	}
+	if rate.Limit != 30 || rate.Remaining != 25 {
+		t.Errorf("quota = %d/%d, attendu 25/30", rate.Remaining, rate.Limit)
+	}
+	if rate.ResetAt.Unix() != reset {
+		t.Errorf("reinitialisation = %v", rate.ResetAt)
+	}
+}
+
+func TestSearchQuotaRefusedToken(t *testing.T) {
+	c, srv := testClient(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`{"message": "Bad credentials"}`))
+	})
+	defer srv.Close()
+
+	if _, err := c.SearchQuota(context.Background()); err == nil || !strings.Contains(err.Error(), "jeton GitHub refuse") {
+		t.Errorf("erreur = %v, attendu un jeton refuse", err)
+	}
+}

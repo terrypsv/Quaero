@@ -9,8 +9,8 @@ et ce script est la seule etape qui touche le reseau: il tourne une fois, a la
 main, et son resultat est versionne.
 
 Deux fichiers, sous licence SIL OFL 1.1:
-  archivo.woff2          texte, titres et logotype, chasses 100 a 125, graisses 400 a 800, jeu latin
-  jetbrains-mono.woff2   requetes et chemins, graisses 400 a 700, jeu latin
+  geist.woff2            texte, titres, logotype et exemples, graisses 400 a 800, jeu latin
+  jetbrains-mono.woff2   requete envoyee a GitHub, graisses 400 a 700, jeu latin
 
 Usage, depuis la racine du depot:
   python scripts/polices.py
@@ -36,12 +36,12 @@ USER_AGENT = (
 
 FONTS = [
     # (fichier, famille et axes au format css2, texte a garder ou None, dossier ofl)
-    ("archivo.woff2", "Archivo:wdth,wght@100..125,400..800", None, "archivo"),
+    ("geist.woff2", "Geist:wght@400..800", None, "geist"),
     ("jetbrains-mono.woff2", "JetBrains Mono:wght@400..700", None, "jetbrainsmono"),
 ]
 
 LICENSES = {
-    "archivo": "OFL-Archivo.txt",
+    "geist": "OFL-Geist.txt",
     "jetbrainsmono": "OFL-JetBrainsMono.txt",
 }
 

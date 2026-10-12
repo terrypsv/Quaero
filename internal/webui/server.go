@@ -13,9 +13,12 @@ import (
 	"context"
 	"embed"
 	"encoding/json"
-	"fmt"
+	"math"
 	"net/http"
+	"net/url"
 	"path"
+	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -60,20 +63,41 @@ type Searcher interface {
 	Search(ctx context.Context, query string, limit, page int) ([]model.Repo, int, github.RateLimit, error)
 }
 
+// QuotaReader is implemented by a client that can read the search budget
+// without spending it. The page asks for it on load, before any search, so
+// that the budget is visible before it is used.
+type QuotaReader interface {
+	SearchQuota(ctx context.Context) (github.RateLimit, error)
+}
+
 // Server holds the dependencies of the HTTP layer.
 type Server struct {
 	Client  Searcher
 	Version string
 	// Addr est l'adresse d'ecoute, d'ou derivent les en-tetes Host acceptes.
 	Addr string
+
+	cache *searchCache
 }
+
+// Pages are kept ten minutes: long enough to re-sort, page back and forth or
+// remove a filter for free, short enough that a fresh question sees fresh
+// results.
+const (
+	cacheTTL   = 10 * time.Minute
+	cachePages = 256
+)
 
 // Handler wires the routes behind the host guard: no route is reachable with
 // a Host that does not designate this machine.
 func (s *Server) Handler() http.Handler {
+	if s.cache == nil {
+		s.cache = newSearchCache(cacheTTL, cachePages)
+	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", s.handleIndex)
 	mux.HandleFunc("/api/search", s.handleSearch)
+	mux.HandleFunc("/api/quota", s.handleQuota)
 	mux.HandleFunc("/api/version", s.handleVersion)
 	mux.HandleFunc("/fonts/", s.handleFont)
 	return guard{allowed: allowedHosts(s.Addr), next: mux}
@@ -119,6 +143,73 @@ func (s *Server) handleVersion(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"version": s.Version})
 }
 
+// handleQuota reports the search budget. It asks GitHub when the client can
+// read it for free, and falls back to the last budget a search reported.
+// A zero limit means the budget is unknown, and the page shows nothing.
+func (s *Server) handleQuota(w http.ResponseWriter, r *http.Request) {
+	rate := s.cache.current()
+	if reader, ok := s.Client.(QuotaReader); ok {
+		ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+		defer cancel()
+		if fresh, err := reader.SearchQuota(ctx); err == nil && fresh.Limit > 0 {
+			s.cache.setRate(fresh)
+			rate = fresh
+		}
+	}
+	writeJSON(w, http.StatusOK, quotaOf(rate, time.Now()))
+}
+
+// quotaOf turns a rate limit into what the page displays.
+func quotaOf(rate github.RateLimit, now time.Time) model.Quota {
+	if rate.Limit <= 0 || rate.Remaining < 0 {
+		return model.Quota{}
+	}
+	q := model.Quota{Remaining: rate.Remaining, Limit: rate.Limit}
+	if !rate.ResetAt.IsZero() {
+		q.ResetAt = rate.ResetAt.Local().Format("15:04:05")
+		if d := rate.ResetAt.Sub(now); d > 0 {
+			q.ResetIn = int(math.Ceil(d.Seconds()))
+		}
+	}
+	return q
+}
+
+var (
+	// GitHub topics: lowercase letters, digits and hyphens, fifty at most.
+	topicRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,49}$`)
+	// GitHub language names: letters, digits, and the few signs real names
+	// carry (C++, C#, Objective-C, Ren'Py, Jupyter Notebook).
+	languageRe = regexp.MustCompile(`^[\p{L}\p{N}][\p{L}\p{N} +#.'-]{0,39}$`)
+)
+
+// maxFilterTopics bounds the topics a page can add. GitHub rejects queries
+// past 256 characters, and three topics on top of the terms already make a
+// very narrow question.
+const maxFilterTopics = 3
+
+// readFilters takes the criteria added by clicking on a page of results. Each
+// value ends up inside a GitHub qualifier, so a value that could close the
+// qualifier and open another one (a colon, a quote) is refused, not escaped.
+func readFilters(v url.Values) model.Filters {
+	var f model.Filters
+	if lang := strings.TrimSpace(v.Get("lang")); languageRe.MatchString(lang) {
+		f.Language = lang
+	}
+	for _, raw := range v["topic"] {
+		t := strings.ToLower(strings.TrimSpace(raw))
+		if topicRe.MatchString(t) && len(f.Topics) < maxFilterTopics && !slices.Contains(f.Topics, t) {
+			f.Topics = append(f.Topics, t)
+		}
+	}
+	if n, err := strconv.Atoi(v.Get("stars")); err == nil && n > 0 && n <= 1000000 {
+		f.MinStars = n
+	}
+	if n, err := strconv.Atoi(v.Get("days")); err == nil && n > 0 && n <= 3650 {
+		f.PushedWithinDays = n
+	}
+	return f
+}
+
 func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 	phrase := r.URL.Query().Get("q")
 	if phrase == "" {
@@ -162,6 +253,7 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 	if scope == scopeFrench {
 		in = intent.French(in)
 	}
+	in.Filters = readFilters(r.URL.Query())
 	query := intent.Query(in)
 
 	ctx, cancel := context.WithTimeout(r.Context(), 40*time.Second)
@@ -181,7 +273,7 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 	var err error
 
 	for _, st := range strategies {
-		stRepos, stTotal, stRate, stErr := s.Client.Search(ctx, st.Query, limit, page)
+		stRepos, stTotal, stRate, stErr := s.cache.search(ctx, s.Client, st.Query, limit, page)
 		rate = stRate
 		if stErr != nil {
 			// The first failure is fatal; a later one just stops the widening,
@@ -229,7 +321,7 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 		// Six variantes au plus: le francais d'abord, puis les communautes les
 		// plus presentes sur GitHub.
 		for _, alt := range intent.Widen(in, 6) {
-			altRepos, altTotal, altRate, altErr := s.Client.Search(ctx, alt, limit, 1)
+			altRepos, altTotal, altRate, altErr := s.cache.search(ctx, s.Client, alt, limit, 1)
 			rate = altRate
 			if altErr != nil {
 				break
@@ -254,7 +346,7 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 	var relaxed []string
 	if err == nil && len(repos) == 0 && page == 1 {
 		for _, step := range intent.Ladder(in) {
-			stepRepos, stepTotal, stepRate, stepErr := s.Client.Search(ctx, step.Query, limit, 1)
+			stepRepos, stepTotal, stepRate, stepErr := s.cache.search(ctx, s.Client, step.Query, limit, 1)
 			rate = stepRate
 			if stepErr != nil {
 				break
@@ -301,46 +393,16 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 		Precision: precision,
 	}
 
-	if rate.Limit > 0 {
-		result.Quota = model.Quota{Remaining: rate.Remaining, Limit: rate.Limit}
-		if !rate.ResetAt.IsZero() {
-			result.Quota.ResetAt = rate.ResetAt.Local().Format("15:04")
-		}
-	}
+	// The budget left is always reported, the page keeps it in view. The gap
+	// between matches and reachable results is explained by the page too,
+	// next to the criteria that close it.
+	result.Quota = quotaOf(rate, time.Now())
 
 	if len(relaxed) > 0 && total > 0 {
 		result.Note = intent.Describe(relaxed)
 	}
 
-	// GitHub hands out at most a thousand results whatever the match count.
-	// Saying so is more useful than letting the user page into emptiness and
-	// conclude the tool is broken.
-	if total > reachable {
-		result.Note = joinNotes(result.Note, fmt.Sprintf(
-			"%d depots correspondent, mais l'API GitHub n'en restitue que %d. Affiner la phrase pour reduire le champ.",
-			total, reachable))
-	}
-
-	// A quota that is about to run out changes what the user should do next,
-	// so it is surfaced rather than discovered through a sudden failure.
-	if rate.Remaining >= 0 && rate.Remaining < 10 {
-		quota := fmt.Sprintf("quota GitHub bientot epuise: %d requete(s) restante(s), reinitialisation a %s",
-			rate.Remaining, rate.ResetAt.Local().Format("15:04:05"))
-		result.Note = joinNotes(result.Note, quota)
-	}
-
 	writeJSON(w, http.StatusOK, result)
-}
-
-// joinNotes concatenates messages with a separator, skipping the empties.
-func joinNotes(parts ...string) string {
-	var kept []string
-	for _, p := range parts {
-		if strings.TrimSpace(p) != "" {
-			kept = append(kept, strings.TrimSpace(p))
-		}
-	}
-	return strings.Join(kept, " ")
 }
 
 func writeJSON(w http.ResponseWriter, status int, payload any) {
