@@ -37,6 +37,8 @@
 - [x] Langue réelle de la description (anglais, français, chinois, russe...)
       au lieu de l'écriture
 - [x] Lecture de la phrase pendant la frappe, sans dépenser le quota
+- [x] Pied de page pleine largeur, en bas de la fenêtre sur l'accueil, à la
+      suite de la liste quand elle est plus longue
 - [ ] Validation d'usage réel sur des recherches quotidiennes
 - [ ] Release multi-plateforme
 
