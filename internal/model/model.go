@@ -97,6 +97,27 @@ type Intent struct {
 	// order. Joining every Text gives the phrase back exactly as typed, so an
 	// interface can show each word with what became of it.
 	Reading []Segment `json:"reading,omitempty"`
+	// Filters are the criteria added by clicking on a page of results.
+	Filters Filters `json:"filters"`
+}
+
+// Filters are criteria added after a first page of results, by choosing among
+// what the results themselves contain rather than by typing.
+//
+// They are requirements, not guesses. A topic read from the phrase is a bet on
+// how maintainers label their work and is dropped whenever it gets in the way;
+// a topic the user clicked is the user narrowing the question. So every
+// strategy and every widened query applies them, and relaxation never removes
+// them.
+type Filters struct {
+	// Language replaces the language read from the phrase, if any.
+	Language string `json:"language,omitempty"`
+	// Topics are added to the query as topic: qualifiers.
+	Topics []string `json:"topics,omitempty"`
+	// MinStars raises the star floor; the stricter of the two applies.
+	MinStars int `json:"min_stars,omitempty"`
+	// PushedWithinDays narrows the activity window; the shorter one applies.
+	PushedWithinDays int `json:"pushed_within_days,omitempty"`
 }
 
 // Segment roles. A separator between two words carries no role.
@@ -144,7 +165,8 @@ type Result struct {
 
 	// Quota is what the API budget looks like after this search. Showing it
 	// permanently rather than only when it runs out means a user who is about
-	// to be cut off can see it coming.
+	// to be cut off can see it coming. The search budget is thirty requests a
+	// minute for any authenticated account, whatever its plan.
 	Quota Quota `json:"quota"`
 
 	// Scope is "anglais", "francais" or "elargi".
@@ -161,4 +183,8 @@ type Quota struct {
 	Remaining int    `json:"remaining"`
 	Limit     int    `json:"limit"`
 	ResetAt   string `json:"reset_at,omitempty"`
+	// ResetIn is the number of seconds until the budget is full again. A
+	// duration rather than a clock time, so that the page can count down
+	// without trusting that its clock agrees with the server's.
+	ResetIn int `json:"reset_in,omitempty"`
 }

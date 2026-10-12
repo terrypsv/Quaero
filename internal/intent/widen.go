@@ -14,9 +14,10 @@ import "github.com/terrypsv/Quaero/internal/model"
 // The variants therefore have to be separate queries whose results are merged.
 //
 // That costs one API call per variant, which is why widening is a choice
-// rather than the default. With a personal token the budget is five thousand
-// calls an hour, so a handful of extra calls per search is affordable; making
-// it automatic would quietly multiply everyone's consumption by five.
+// rather than the default. Repository search allows thirty calls a minute to
+// any authenticated account, whatever its plan: a deep search already spends
+// five, and making the variants automatic would leave room for two searches a
+// minute instead of six.
 //
 // Only the most distinctive term is substituted, not all of them. Replacing
 // two terms at once would produce a query where a Chinese word and a Russian
@@ -51,7 +52,7 @@ func Widen(in model.Intent, maxQueries int) []string {
 		// A description written in another language rarely carries the
 		// English topic names, so the topic facet is dropped: keeping it would
 		// make the widened query stricter than the original, which defeats the
-		// purpose.
+		// purpose. Topics the user clicked stay, they are in Filters.
 		alt.Topics = nil
 		out = append(out, Query(alt))
 	}

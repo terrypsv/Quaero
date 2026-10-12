@@ -311,17 +311,29 @@ func Query(in model.Intent) string {
 	var parts []string
 	parts = append(parts, strings.Join(in.Terms, " "))
 
-	if in.Language != "" {
-		parts = append(parts, "language:"+quoteIfNeeded(in.Language))
+	// A language chosen among the results replaces the one read from the
+	// phrase: GitHub accepts several language qualifiers but ORs them, which
+	// would widen the search the user just asked to narrow.
+	language := in.Language
+	if in.Filters.Language != "" {
+		language = in.Filters.Language
 	}
-	for _, t := range in.Topics {
+	if language != "" {
+		parts = append(parts, "language:"+quoteIfNeeded(language))
+	}
+	seen := map[string]bool{}
+	for _, t := range append(append([]string(nil), in.Topics...), in.Filters.Topics...) {
+		if seen[t] {
+			continue
+		}
+		seen[t] = true
 		parts = append(parts, "topic:"+t)
 	}
-	if in.MinStars > 0 {
-		parts = append(parts, "stars:>="+strconv.Itoa(in.MinStars))
+	if stars := max(in.MinStars, in.Filters.MinStars); stars > 0 {
+		parts = append(parts, "stars:>="+strconv.Itoa(stars))
 	}
-	if in.PushedWithinDays > 0 {
-		parts = append(parts, "pushed:>="+daysAgo(in.PushedWithinDays))
+	if days := shorter(in.PushedWithinDays, in.Filters.PushedWithinDays); days > 0 {
+		parts = append(parts, "pushed:>="+daysAgo(days))
 	}
 	if in.ExcludeForks {
 		parts = append(parts, "fork:false")
@@ -330,6 +342,20 @@ func Query(in model.Intent) string {
 		parts = append(parts, "archived:false")
 	}
 	return strings.TrimSpace(strings.Join(parts, " "))
+}
+
+// shorter returns the narrower of two activity windows, zero meaning none.
+func shorter(a, b int) int {
+	switch {
+	case a <= 0:
+		return b
+	case b <= 0:
+		return a
+	case a < b:
+		return a
+	default:
+		return b
+	}
 }
 
 func plural(n int, one, many string) string {

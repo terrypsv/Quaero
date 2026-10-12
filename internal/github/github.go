@@ -36,9 +36,9 @@ const (
 
 // ErrNoToken is returned when no credential is available.
 //
-// Anonymous access is capped at 60 requests per hour, which a single search
-// session exhausts. Rather than half-work and fail confusingly on the fifth
-// query, the client refuses to start without a token.
+// Anonymous search is capped at ten requests a minute, two deep searches.
+// Rather than half-work and fail confusingly on the third query, the client
+// refuses to start without a token.
 var ErrNoToken = fmt.Errorf("aucun jeton GitHub: definir GITHUB_TOKEN ou GH_TOKEN")
 
 // Client queries the GitHub search API.
@@ -187,14 +187,10 @@ func (c *Client) Search(ctx context.Context, query string, limit, page int) ([]m
 		"page":     {strconv.Itoa(page)},
 	}.Encode()
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	req, err := c.newRequest(ctx, endpoint)
 	if err != nil {
 		return nil, 0, RateLimit{}, err
 	}
-	req.Header.Set("Authorization", "Bearer "+c.Token)
-	req.Header.Set("Accept", "application/vnd.github+json")
-	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
-	req.Header.Set("User-Agent", "quaero")
 
 	resp, err := c.HTTP.Do(req)
 	if err != nil {
@@ -218,6 +214,60 @@ func (c *Client) Search(ctx context.Context, query string, limit, page int) ([]m
 		repos = append(repos, normalise(item))
 	}
 	return repos, payload.TotalCount, rate, nil
+}
+
+// newRequest prepares an authenticated GET on the API.
+func (c *Client) newRequest(ctx context.Context, endpoint string) (*http.Request, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+c.Token)
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+	req.Header.Set("User-Agent", "quaero")
+	return req, nil
+}
+
+// SearchQuota reads what is left of the search budget without spending any
+// of it: GitHub does not count calls to /rate_limit against any limit.
+//
+// The search budget is separate from the general one. It allows thirty
+// requests a minute to any authenticated account, whatever its plan, and
+// refills completely at the end of each minute.
+func (c *Client) SearchQuota(ctx context.Context) (RateLimit, error) {
+	req, err := c.newRequest(ctx, c.BaseURL+"/rate_limit")
+	if err != nil {
+		return RateLimit{}, err
+	}
+	resp, err := c.HTTP.Do(req)
+	if err != nil {
+		return RateLimit{}, fmt.Errorf("appel GitHub: %w", err)
+	}
+	defer resp.Body.Close()
+
+	var payload struct {
+		Resources struct {
+			Search struct {
+				Limit     int   `json:"limit"`
+				Remaining int   `json:"remaining"`
+				Reset     int64 `json:"reset"`
+			} `json:"search"`
+		} `json:"resources"`
+		Message string `json:"message"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		return RateLimit{}, fmt.Errorf("reponse GitHub illisible: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return RateLimit{}, apiError(resp.StatusCode, searchResponse{Message: payload.Message}, RateLimit{Remaining: -1}, c.Source)
+	}
+	search := payload.Resources.Search
+	rate := RateLimit{Remaining: search.Remaining, Limit: search.Limit}
+	if search.Reset > 0 {
+		rate.ResetAt = time.Unix(search.Reset, 0)
+	}
+	return rate, nil
 }
 
 // apiError turns an HTTP failure into a message that says what to do next.

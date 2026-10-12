@@ -161,21 +161,25 @@ func TestUpstreamErrorSurfacesTheQuery(t *testing.T) {
 	}
 }
 
-func TestLowQuotaIsAnnounced(t *testing.T) {
-	// Un quota qui va manquer change ce que l'utilisateur doit faire ensuite;
-	// il vaut mieux le dire que le lui faire decouvrir par un echec.
+func TestQuotaIsReported(t *testing.T) {
+	// Le quota de recherche se vide en quelques recherches et se remplit en
+	// une minute: la page doit savoir combien il en reste et dans combien de
+	// secondes il sera plein.
 	f := &fakeSearcher{
 		total: 1,
 		repos: []model.Repo{{FullName: "a/b", Name: "b"}},
-		rate:  github.RateLimit{Remaining: 3, Limit: 5000, ResetAt: time.Now().Add(time.Hour)},
+		rate:  github.RateLimit{Remaining: 3, Limit: 30, ResetAt: time.Now().Add(40 * time.Second)},
 	}
 	rec := httptest.NewRecorder()
 	newServer(f).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, quick("/api/search?q=yaml"), nil))
 
 	var out model.Result
 	_ = json.NewDecoder(rec.Body).Decode(&out)
-	if out.Note == "" {
-		t.Error("un quota faible doit produire une note")
+	if out.Quota.Remaining != 3 || out.Quota.Limit != 30 {
+		t.Errorf("quota = %d/%d, attendu 3/30", out.Quota.Remaining, out.Quota.Limit)
+	}
+	if out.Quota.ResetIn < 1 || out.Quota.ResetIn > 41 {
+		t.Errorf("reset_in = %d, attendu environ 40", out.Quota.ResetIn)
 	}
 }
 
@@ -190,7 +194,7 @@ func TestPaginationIsForwarded(t *testing.T) {
 
 // Un total de onze mille correspondances ne veut pas dire onze mille resultats
 // atteignables: l'API en restitue mille. Promettre des pages vides serait pire
-// que d'annoncer la limite.
+// que d'annoncer la limite, ce que la page fait a partir de ces deux nombres.
 func TestUnreachableResultsAreAnnounced(t *testing.T) {
 	f := &fakeSearcher{total: 11000, repos: []model.Repo{{FullName: "a/b", Name: "b"}}}
 	rec := httptest.NewRecorder()
@@ -203,9 +207,6 @@ func TestUnreachableResultsAreAnnounced(t *testing.T) {
 	}
 	if out.Total != 11000 {
 		t.Errorf("total = %d, want 11000", out.Total)
-	}
-	if out.Note == "" {
-		t.Error("l'ecart entre trouves et atteignables doit etre annonce")
 	}
 	if out.Pages != 20 {
 		t.Errorf("pages = %d, want 20 (1000/50)", out.Pages)
@@ -272,7 +273,7 @@ func TestEmptyResultTriggersRelaxation(t *testing.T) {
 	if len(out.Repos) == 0 {
 		t.Error("le desserrage devait finir par trouver quelque chose")
 	}
-	if out.Note == "" || !strings.Contains(out.Note, "desserr") && !strings.Contains(out.Note, "Rien trouve") {
+	if !strings.Contains(out.Note, "Rien trouvé") {
 		t.Errorf("le desserrage doit etre annonce: %q", out.Note)
 	}
 }

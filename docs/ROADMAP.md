@@ -22,7 +22,15 @@
 - [x] Vocabulaire de la sécurité étendu, expressions connues lues avant les
       mots de fraîcheur ("active directory")
 - [x] Ouverture automatique dans le navigateur, `-no-browser` pour s'en passer
-- [x] Archivo pour lire, JetBrains Mono pour recopier
+- [x] Geist pour lire, sans étirement, JetBrains Mono pour recopier
+- [x] Quota de recherche visible en permanence, jauge et compte à rebours,
+      lu sur `/rate_limit` sans être dépensé
+- [x] Pages gardées dix minutes, un changement de tri ne repaie pas la
+      recherche
+- [x] Bloc pour resserrer une liste trop longue (langage, sujet, mise à jour,
+      popularité), critères appliqués chez GitHub et retirables
+- [x] Une cinquantaine d'exemples de sécurité, huit à la fois, phrase en
+      français ou en anglais
 - [ ] Validation d'usage réel sur des recherches quotidiennes
 - [ ] Release multi-plateforme
 

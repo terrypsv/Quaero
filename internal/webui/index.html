@@ -7,13 +7,13 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='28' cy='28' r='19' fill='none' stroke='%23101010' stroke-width='10'/%3E%3Crect x='41' y='41' width='18' height='18' fill='%23C6F432' stroke='%23101010' stroke-width='4'/%3E%3C/svg%3E">
 <style>
   /* Direction Index: papier, encre, et un vert acide qui marque ce que
-     Quaero a compris. Une seule chose a l'ecran a la fois: la question, puis
-     les depots. Le reste (options, raisons d'un rang) se deplie a la demande.
-     Archivo pour lire, JetBrains Mono pour ce qui se recopie (requete,
-     chemins). Polices embarquees dans le binaire, voir scripts/polices.py. */
+     Quaero a compris. La question d'abord, puis les depots, puis de quoi
+     resserrer la liste. Geist pour lire, en chasse normale, JetBrains Mono
+     pour ce qui se recopie (requete). Polices embarquees dans le binaire,
+     voir scripts/polices.py. */
   @font-face {
-    font-family: "Archivo"; src: url("/fonts/archivo.woff2") format("woff2");
-    font-weight: 400 800; font-stretch: 100% 125%; font-style: normal; font-display: swap;
+    font-family: "Geist"; src: url("/fonts/geist.woff2") format("woff2");
+    font-weight: 400 800; font-style: normal; font-display: swap;
   }
   @font-face {
     font-family: "JetBrains Mono"; src: url("/fonts/jetbrains-mono.woff2") format("woff2");
@@ -25,9 +25,10 @@
     --gris: #5E5E5A;
     --pale: #8C8C86;
     --trait: #CFCFC9;
+    --sombre: #3A3A36;
     --acide: #C6F432;
     --blanc: #FFFFFF;
-    --texte: "Archivo", "Segoe UI", system-ui, -apple-system, sans-serif;
+    --texte: "Geist", "Segoe UI", system-ui, -apple-system, sans-serif;
     --mono: "JetBrains Mono", Consolas, "SF Mono", Menlo, "DejaVu Sans Mono", monospace;
   }
   * { box-sizing: border-box; }
@@ -44,14 +45,32 @@
   button, select { font: inherit; color: inherit; }
   :focus-visible { outline: 3px solid var(--encre); outline-offset: 2px; }
 
-  .page { max-width: 960px; margin: 0 auto; padding: 24px 20px 64px; display: flex; flex-direction: column; gap: 32px; }
+  .page { max-width: 960px; margin: 0 auto; padding: 24px 20px 64px; display: flex; flex-direction: column; gap: 28px; }
 
-  .tete { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+  .tete { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; }
   .marque { display: inline-flex; align-items: center; gap: 12px; text-decoration: none; }
-  .mot { font-weight: 800; font-stretch: 125%; font-size: 28px; line-height: 1; letter-spacing: -1px; }
-  .intro { margin: -12px 0 0; max-width: 680px; color: var(--gris); font-size: 17px; text-wrap: pretty; }
-  .version { color: var(--pale); font-size: 13px; }
+  .mot { font-weight: 800; font-size: 30px; line-height: 1; letter-spacing: -0.02em; }
+  .intro { margin: -8px 0 0; max-width: 640px; color: var(--gris); font-size: 18px; text-wrap: pretty; }
   .cache { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+  /* Le quota de recherche se vide en quelques recherches et se remplit en
+     une minute: il reste en vue, et passe en negatif quand il ne suffit plus
+     pour une recherche. */
+  .quota {
+    display: grid; grid-template-columns: auto auto; align-items: center; gap: 3px 12px;
+    padding: 8px 12px; border: 2px solid var(--encre); background: var(--blanc); cursor: help;
+  }
+  .q-lib { grid-column: 1 / -1; font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--gris); }
+  .q-n { font-size: 26px; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; }
+  .q-n small { font-size: 14px; font-weight: 500; color: var(--gris); }
+  .jauge { display: grid; grid-auto-flow: column; grid-auto-columns: 3px; gap: 1px; height: 18px; }
+  .jauge i { background: var(--trait); }
+  .jauge i.plein { background: var(--encre); }
+  .q-sous { grid-column: 1 / -1; font-size: 12px; color: var(--gris); font-variant-numeric: tabular-nums; }
+  .quota.bas { background: var(--encre); color: var(--acide); }
+  .quota.bas .q-lib, .quota.bas .q-sous, .quota.bas .q-n small { color: var(--papier); }
+  .quota.bas .jauge i { background: var(--sombre); }
+  .quota.bas .jauge i.plein { background: var(--acide); }
 
   .question { display: flex; flex-direction: column; gap: 12px; }
   .barre { display: flex; flex-wrap: wrap; border: 3px solid var(--encre); background: var(--blanc); }
@@ -68,25 +87,28 @@
   }
   .go:disabled { color: var(--pale); cursor: default; }
 
-  .sous-barre { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 4px 24px; font-size: 13px; }
-  .idees { display: flex; flex-wrap: wrap; align-items: center; gap: 0 16px; color: var(--gris); }
+  .idees { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .idees .lib { margin-right: 4px; font-size: 13px; color: var(--gris); }
   .idee {
-    min-height: 36px; padding: 0; border: 0; background: none; cursor: pointer; color: var(--gris); text-align: left;
-    text-decoration: underline; text-decoration-color: var(--trait); text-underline-offset: 4px;
+    min-height: 36px; padding: 0 12px; border: 1.5px solid var(--trait); border-radius: 0;
+    background: var(--blanc); color: var(--encre); font-size: 15px; text-align: left; cursor: pointer;
   }
-  .idee:hover { color: var(--encre); text-decoration-color: var(--encre); }
+  .idee:hover { border-color: var(--encre); }
+  .idee.autres { background: transparent; border-style: dashed; color: var(--gris); }
+  .idee.autres:hover { color: var(--encre); }
 
-  details.options { min-width: 0; }
-  details.options summary { min-height: 36px; display: flex; align-items: center; cursor: pointer; font-weight: 700; }
+  details.options { min-width: 0; font-size: 13px; }
+  details.options summary { min-height: 32px; display: inline-flex; align-items: center; gap: 6px; cursor: pointer; font-weight: 700; }
+  details.options summary .etat { font-weight: 400; color: var(--gris); }
   /* Un + ou un - dit qu'il y a quelque chose a deplier, le triangle natif
      disparaissant avec display: flex. */
   details > summary { list-style: none; }
   details > summary::-webkit-details-marker { display: none; }
-  details > summary::after { content: "+"; margin-left: 8px; font-weight: 700; }
+  details > summary::after { content: "+"; margin-left: 4px; font-weight: 700; }
   details[open] > summary::after { content: "-"; }
   .panneau {
     margin-top: 8px; padding: 14px 16px; background: var(--blanc); border: 2px solid var(--encre);
-    display: flex; flex-direction: column; gap: 14px; max-width: 520px;
+    display: flex; flex-direction: column; gap: 14px; max-width: 560px;
   }
   .opt { display: grid; grid-template-columns: 140px minmax(0, 1fr); gap: 4px 12px; align-items: center; }
   .opt .aide { grid-column: 2; color: var(--gris); font-size: 12px; }
@@ -96,30 +118,44 @@
     min-height: 36px; padding: 0 12px; border: 2px solid var(--encre); border-radius: 0;
     background: transparent; font-size: 14px; cursor: pointer;
   }
-  .choix:hover { background: var(--blanc); }
+  .choix:hover { background: var(--acide); }
   .choix.on { background: var(--encre); color: var(--papier); }
-  .choix .n { margin-left: 6px; color: var(--gris); }
+  .choix .n { margin-left: 6px; color: var(--gris); font-variant-numeric: tabular-nums; }
   .choix.on .n { color: var(--acide); }
 
   .compris { display: flex; flex-direction: column; gap: 10px; }
-  .compris h2 { margin: 0; font-size: 13px; font-weight: 600; color: var(--gris); text-transform: uppercase; letter-spacing: 0.08em; }
+  .compris h2 { margin: 0; font-size: 12px; font-weight: 600; color: var(--gris); text-transform: uppercase; letter-spacing: 0.08em; }
   .puces { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
   .puces li { display: inline-flex; align-items: baseline; gap: 8px; padding: 6px 10px; background: var(--blanc); border: 2px solid var(--encre); }
   .puces .type { font-size: 13px; color: var(--gris); }
   .puces b { padding: 0 4px; background: var(--acide); font-weight: 700; }
   .puces .origine { font-size: 13px; color: var(--gris); }
+  .puces li.ajoute { padding-right: 4px; }
+  .retirer {
+    align-self: center; min-width: 28px; min-height: 28px; padding: 0; border: 0; background: none;
+    color: var(--gris); font-size: 18px; line-height: 1; cursor: pointer;
+  }
+  .retirer:hover { color: var(--encre); background: var(--acide); }
   .ignore { margin: 0; font-size: 14px; color: var(--gris); max-width: 760px; }
   .requete { margin: 0; color: var(--gris); font-size: 13px; overflow-wrap: anywhere; }
 
   .bandeau { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 20px; padding-bottom: 12px; border-bottom: 3px solid var(--encre); }
-  .bandeau h2 { margin: 0; font-size: 30px; line-height: 1.1; font-weight: 800; font-stretch: 112%; letter-spacing: -0.01em; }
-  .bandeau h2 small { margin-left: 10px; font-size: 14px; font-weight: 400; font-stretch: 100%; letter-spacing: 0; color: var(--gris); }
+  .bandeau h2 { margin: 0; font-size: 34px; line-height: 1.05; font-weight: 800; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+  .bandeau h2 small { margin-left: 10px; font-size: 14px; font-weight: 400; letter-spacing: 0; color: var(--gris); }
   .tri { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--gris); }
   .tri select { min-height: 36px; padding: 0 8px; border: 2px solid var(--encre); border-radius: 0; background: var(--blanc); color: var(--encre); font-size: 14px; }
-  .quota { padding: 2px 10px; background: var(--encre); color: var(--acide); font-size: 13px; }
-  .filtres { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 12px; }
 
-  .note { margin: 0; padding: 10px 14px; background: var(--acide); font-size: 14px; }
+  /* De quoi resserrer la liste, tire des depots charges eux-memes: les
+     langages, sujets, ages et popularites qui s'y trouvent vraiment. */
+  .preciser { margin-top: 16px; padding: 14px 16px; background: var(--blanc); border: 2px solid var(--encre); display: flex; flex-direction: column; gap: 12px; }
+  .preciser .aide { margin: 0; font-size: 15px; max-width: 720px; }
+  .preciser .aide b { padding: 0 4px; background: var(--acide); font-variant-numeric: tabular-nums; }
+  .ligne { display: grid; grid-template-columns: 100px minmax(0, 1fr); gap: 4px 12px; align-items: baseline; }
+  .ligne > span { font-size: 13px; color: var(--gris); }
+  .preciser .base { margin: 0; font-size: 12px; color: var(--pale); }
+  .filtres { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin-top: 12px; font-size: 13px; color: var(--gris); }
+
+  .note { margin: 16px 0 0; padding: 10px 14px; background: var(--acide); font-size: 14px; }
   .erreur { margin: 0; padding: 14px 16px; background: var(--encre); color: var(--papier); }
   .erreur b { color: var(--acide); margin-right: 10px; }
   .attente, .rien { margin: 0; padding: 40px 0; text-align: center; color: var(--gris); }
@@ -133,8 +169,8 @@
   .liste { list-style: none; margin: 0; padding: 0; }
   .depot { padding: 18px 0; border-bottom: 1px solid var(--trait); display: flex; flex-direction: column; gap: 6px; }
   .l1 { display: flex; align-items: baseline; gap: 12px; }
-  .rang { flex: 0 0 auto; color: var(--pale); font-size: 13px; }
-  .nom { min-width: 0; font-weight: 700; font-size: 18px; overflow-wrap: anywhere; }
+  .rang { flex: 0 0 auto; color: var(--pale); font-size: 13px; font-variant-numeric: tabular-nums; }
+  .nom { min-width: 0; font-weight: 700; font-size: 19px; overflow-wrap: anywhere; }
   .sante { margin-left: auto; flex: 0 0 auto; display: inline-flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 700; cursor: help; }
   .barres { display: inline-flex; gap: 2px; }
   .barres i { width: 8px; height: 8px; border: 1.5px solid var(--encre); }
@@ -144,14 +180,11 @@
     display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
   }
   .meta { display: flex; flex-wrap: wrap; gap: 2px 18px; font-size: 14px; color: var(--gris); }
-  .meta b { color: var(--encre); font-weight: 500; }
+  .meta b { color: var(--encre); font-weight: 600; font-variant-numeric: tabular-nums; }
   details.plus summary { min-height: 32px; display: inline-flex; align-items: center; cursor: pointer; font-size: 13px; color: var(--gris); }
   details.plus summary:hover { color: var(--encre); }
   .plus-corps { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; background: var(--blanc); border: 1px solid var(--trait); font-size: 13px; }
   .plus-corps p { margin: 0; }
-  .affiner { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
-  .sujet { min-height: 30px; padding: 0 8px; border: 1px solid var(--encre); background: none; font-size: 12px; cursor: pointer; }
-  .sujet:hover { background: var(--acide); }
 
   .pagination { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 12px; color: var(--gris); font-size: 13px; }
 
@@ -162,6 +195,9 @@
     .go { flex: 1 1 100%; }
     .l1 { flex-wrap: wrap; }
     .sante { margin-left: 0; }
+    .ligne { grid-template-columns: 1fr; }
+    .opt { grid-template-columns: 1fr; }
+    .opt .aide { grid-column: 1; }
   }
   @media (prefers-reduced-motion: reduce) {
     .attente::after { animation: none; }
@@ -175,10 +211,15 @@
       <svg aria-hidden="true" width="34" height="34" viewBox="0 0 64 64" fill="none"><circle cx="28" cy="28" r="19" stroke="#101010" stroke-width="10"/><rect x="41" y="41" width="18" height="18" fill="#C6F432" stroke="#101010" stroke-width="4"/></svg>
       <span class="mot">quaero</span>
     </a>
-    <span class="version" id="version"></span>
+    <div class="quota" id="quota" role="status" hidden>
+      <span class="q-lib">quota GitHub, par minute</span>
+      <span class="q-n" id="quota-n"></span>
+      <span class="jauge" id="quota-jauge" aria-hidden="true"></span>
+      <span class="q-sous" id="quota-sous"></span>
+    </div>
   </header>
 
-  <p class="intro">Décris en français le projet GitHub que tu cherches. Quaero traduit ta phrase en requête, classe les dépôts trouvés et indique pour chacun s'il est encore entretenu.</p>
+  <p class="intro">Décris le projet GitHub que tu cherches. Quaero traduit ta phrase en requête, classe les dépôts trouvés et indique pour chacun s'il est encore entretenu.</p>
 
   <section class="question" aria-label="Recherche">
     <div class="barre">
@@ -187,13 +228,11 @@
              placeholder="un scanner de ports en go, encore maintenu">
       <button class="go" id="go" type="button">chercher</button>
     </div>
-    <div class="sous-barre">
-      <div class="idees" id="suggest"></div>
-      <details class="options" id="options">
-        <summary>options</summary>
-        <div class="panneau" id="panneau"></div>
-      </details>
-    </div>
+    <div class="idees" id="suggest"></div>
+    <details class="options" id="options">
+      <summary>options <span class="etat" id="options-etat"></span></summary>
+      <div class="panneau" id="panneau"></div>
+    </details>
   </section>
 
   <div id="readback"></div>
@@ -201,7 +240,7 @@
 
   <footer>
     <p>Forks et dépôts archivés écartés par défaut. Écris « y compris les forks » pour les garder.</p>
-    <p>Quaero - Terry Passave &copy; 2026. Tous droits réservés.</p>
+    <p>Quaero <span id="version"></span> - Terry Passave &copy; 2026. Tous droits réservés.</p>
   </footer>
 </div>
 
@@ -237,8 +276,41 @@ var ALL_EXAMPLES = [
   "énumération active directory",
   "règles yara",
   "décompilateur java",
-  "nomenclature logicielle en go"
+  "nomenclature logicielle en go",
+  "énumération de sous-domaines",
+  "attaques kerberos",
+  "cassage de mots de passe",
+  "bac à sable pour logiciels malveillants",
+  "analyse de trafic réseau en go",
+  "scanner de conteneurs docker",
+  "chiffrement de fichiers en rust",
+  "proxy d'interception http",
+  "serveur de commande et contrôle",
+  "simulation d'hameçonnage",
+  "règles sigma",
+  "durcissement ssh",
+  "authentification à deux facteurs",
+  "surface d'attaque externe",
+  "exploits du noyau linux",
+  "analyse de binaires elf",
+  "désobfuscation javascript",
+  "reverse shell en python",
+  "tunnel dns",
+  "injection sql",
+  "émulateur de micrologiciel",
+  "analyse de dump mémoire",
+  "cartographie réseau",
+  "vpn wireguard",
+  "audit de configuration cloud",
+  "analyse de dépendances vulnérables",
+  "signature de code",
+  // La phrase peut aussi s'ecrire en anglais.
+  "port scanner in rust",
+  "subdomain takeover"
 ];
+
+// Nombre d'exemples montres a la fois.
+var SHOWN_EXAMPLES = 8;
 
 // Les libelles disent ce que le niveau veut dire pour qui choisit une
 // dependance, pas comment il s'appelle dans le code.
@@ -264,8 +336,8 @@ var SORTS = [
   ["sante",      "les plus fiables"]
 ];
 
-// La langue des depots, pas celle de la phrase: la phrase est toujours tapee
-// en francais.
+// La langue des depots, pas celle de la phrase: la phrase s'ecrit en
+// francais ou en anglais.
 var SCOPES = [
   ["anglais", "anglais", "Ta phrase est traduite en anglais, la langue de la plupart des dépôts. Réglage conseillé."],
   ["francais", "français", "Cherche les mots tels que tu les as tapés, pour trouver les projets décrits en français."],
@@ -277,26 +349,40 @@ var PRECISIONS = [
   ["rapide", "rapide", "Une seule requête, plus rapide, moins précise."]
 ];
 
+// Ce que coute une recherche dans le quota, selon les options.
+function searchCost() {
+  return (state.precision === "approfondie" ? 5 : 1) + (state.scope === "elargi" ? 6 : 0);
+}
+
 var SCRIPT_LABEL = {
   latin: "latin", chinois: "chinois", japonais: "japonais", coreen: "coréen",
   cyrillique: "cyrillique", arabe: "arabe", hebreu: "hébreu", grec: "grec",
   devanagari: "devanagari", thai: "thaï", indetermine: "sans description"
 };
 
+// Les criteres proposes pour resserrer une liste trop longue. Les seuils sont
+// ceux qui separent des groupes de depots de taille comparable sur GitHub.
+var ACTIVITY_STEPS = [[90, "moins de 3 mois"], [365, "moins d'un an"]];
+var STAR_STEPS = [100, 1000, 10000];
+var MAX_FILTER_TOPICS = 3;
+
 // Ce que chaque role de la lecture mot a mot (model.Segment) a donne, dit en
 // francais: le type de critere, puis sa valeur.
-function months(days) {
+function since(days) {
   var d = parseInt(days, 10);
-  if (d % 30 === 0) return (d / 30) + " mois";
-  return d + " jours";
+  if (d === 365) return "depuis moins d'un an";
+  if (d % 30 === 0) return "depuis moins de " + (d / 30) + " mois";
+  return "depuis moins de " + d + " jours";
 }
+
+function stars(n) { return "au moins " + fmt(parseInt(n, 10)) + " étoiles"; }
 
 function facet(s) {
   switch (s.role) {
     case "terme":    return ["mot-clé", s.value];
     case "langage":  return ["langage", s.value];
-    case "etoiles":  return ["popularité", "au moins " + fmt(parseInt(s.value, 10)) + " étoiles"];
-    case "recence":  return ["mis à jour", "depuis moins de " + months(s.value)];
+    case "etoiles":  return ["popularité", stars(s.value)];
+    case "recence":  return ["mis à jour", since(s.value)];
     case "forks":    return ["forks", "inclus"];
     case "archives": return ["archivés", "inclus"];
   }
@@ -306,7 +392,13 @@ function facet(s) {
 // plain retire casse et accents, pour savoir si un mot a ete traduit ou
 // seulement mis en minuscules.
 function plain(s) {
-  return String(s).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  return String(s).normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+}
+
+// slug ramene un mot-cle a la forme d'un sujet GitHub, pour ne pas proposer
+// en sujet ce qui est deja cherche comme mot.
+function slug(s) {
+  return plain(String(s).replace(/"/g, "")).trim().replace(/\s+/g, "-");
 }
 
 function quoteList(words) {
@@ -315,9 +407,12 @@ function quoteList(words) {
   return q.slice(0, -1).join(", ") + " et " + q[q.length - 1];
 }
 
+function noFilters() { return { language: "", topics: [], min_stars: 0, pushed_within_days: 0 }; }
+
 var state = {
-  sort: "pertinence", page: 1, filter: "tous", script: "tous",
-  scope: "anglais", precision: "approfondie", data: null
+  sort: "pertinence", page: 1, script: "tous",
+  scope: "anglais", precision: "approfondie", data: null,
+  filters: noFilters(), quota: null
 };
 
 function $(id) { return document.getElementById(id); }
@@ -353,36 +448,43 @@ function renderSuggestions() {
   var box = $("suggest");
   box.innerHTML = "";
   var lab = document.createElement("span");
+  lab.className = "lib";
   lab.textContent = "exemples";
   box.appendChild(lab);
-  pick(ALL_EXAMPLES, 3).forEach(function (text) {
+  pick(ALL_EXAMPLES, SHOWN_EXAMPLES).forEach(function (text) {
     var b = document.createElement("button");
     b.type = "button";
     b.className = "idee";
     b.textContent = text;
-    b.onclick = function () { $("q").value = text; run({ page: 1 }); };
+    b.onclick = function () { $("q").value = text; run({ page: 1, fresh: true }); };
     box.appendChild(b);
   });
   var r = document.createElement("button");
   r.type = "button";
-  r.className = "idee";
-  r.textContent = "d'autres";
+  r.className = "idee autres";
+  r.textContent = "d'autres exemples";
   r.onclick = renderSuggestions;
   box.appendChild(r);
 }
 
 // Les options touchent la requete elle-meme: elles restent pres de la barre de
-// recherche, repliees tant qu'on n'en a pas besoin.
+// recherche, repliees, avec leur reglage visible sans les deplier.
 function renderOptions() {
   var h = opt("langue des dépôts", "data-scope", SCOPES, state.scope)
         + opt("précision", "data-precision", PRECISIONS, state.precision);
   $("panneau").innerHTML = h;
+  $("options-etat").textContent = "(" + label(SCOPES, state.scope) + ", " + label(PRECISIONS, state.precision) + ")";
   bind("#panneau [data-scope]", function (b) { setOption({ scope: b.getAttribute("data-scope") }); });
   bind("#panneau [data-precision]", function (b) { setOption({ precision: b.getAttribute("data-precision") }); });
 }
 
-function opt(label, attr, table, current) {
-  var h = '<div class="opt"><span>' + esc(label) + '</span><div class="boutons">';
+function label(table, value) {
+  for (var i = 0; i < table.length; i++) if (table[i][0] === value) return table[i][1];
+  return value;
+}
+
+function opt(name, attr, table, current) {
+  var h = '<div class="opt"><span>' + esc(name) + '</span><div class="boutons">';
   var hint = "";
   table.forEach(function (o) {
     if (o[0] === current) hint = o[2];
@@ -395,35 +497,98 @@ function setOption(o) {
   if (o.scope) state.scope = o.scope;
   if (o.precision) state.precision = o.precision;
   renderOptions();
+  drawQuota();
   if ($("q").value.trim()) run({ page: 1 });
 }
+
+// ---- quota -----------------------------------------------------------------
+
+// Le quota arrive avec chaque recherche, et au chargement par /api/quota qui
+// ne le depense pas. L'echeance est gardee en heure locale, pour compter a
+// rebours sans dependre de l'horloge du serveur.
+function setQuota(q) {
+  if (!q || !(q.limit > 0)) return;
+  state.quota = {
+    remaining: q.remaining, limit: q.limit,
+    deadline: q.reset_in > 0 ? Date.now() + q.reset_in * 1000 : 0
+  };
+  drawQuota();
+}
+
+function loadQuota() {
+  fetch("/api/quota").then(function (r) { return r.json(); }).then(setQuota).catch(function () {});
+}
+
+function drawQuota() {
+  var q = state.quota;
+  if (!q) return;
+  // Passee l'echeance, GitHub remet le compteur au plein: on l'affiche
+  // aussitot et on verifie aupres de lui.
+  if (q.deadline && Date.now() >= q.deadline) {
+    q.remaining = q.limit;
+    q.deadline = 0;
+    loadQuota();
+  }
+  var cost = searchCost();
+  var can = Math.floor(q.remaining / cost);
+  var box = $("quota");
+  box.hidden = false;
+  box.classList.toggle("bas", can < 1);
+  box.title = "GitHub autorise " + q.limit + " requêtes de recherche par minute et par compte, quel que soit l'abonnement. "
+    + "Une recherche approfondie en coûte 5, une rapide 1, l'option toutes langues jusqu'à 6 de plus.";
+  $("quota-n").innerHTML = q.remaining + "<small> / " + q.limit + "</small>";
+
+  var jauge = $("quota-jauge"), cells = Math.min(q.limit, 60), i;
+  if (jauge.children.length !== cells) {
+    jauge.innerHTML = "";
+    for (i = 0; i < cells; i++) jauge.appendChild(document.createElement("i"));
+  }
+  var full = Math.round(q.remaining * cells / q.limit);
+  for (i = 0; i < cells; i++) jauge.children[i].className = i < full ? "plein" : "";
+
+  var text = can >= 1
+    ? "assez pour " + can + (can > 1 ? " recherches" : " recherche")
+    : "plus assez pour une recherche";
+  if (q.deadline && q.remaining < q.limit) {
+    text += ", plein dans " + Math.max(1, Math.ceil((q.deadline - Date.now()) / 1000)) + " s";
+  }
+  $("quota-sous").textContent = text;
+  box.setAttribute("aria-label", "Quota GitHub, " + q.remaining + " requêtes sur " + q.limit + ", " + text);
+}
+
+// ---- recherche -------------------------------------------------------------
 
 function init() {
   renderSuggestions();
   renderOptions();
-  $("go").onclick = function () { run({ page: 1 }); };
+  $("go").onclick = function () { run({ page: 1, fresh: true }); };
   $("q").addEventListener("keydown", function (e) {
-    if (e.key === "Enter") run({ page: 1 });
+    if (e.key === "Enter") run({ page: 1, fresh: true });
   });
   fetch("/api/version").then(function (r) { return r.json(); })
     .then(function (d) { $("version").textContent = d.version || ""; })
     .catch(function () {});
+  loadQuota();
+  setInterval(drawQuota, 1000);
 }
 
-// Ajouter un langage ou un sujet a la phrase et relancer: c'est le raffinement
-// qu'on veut faire neuf fois sur dix apres une premiere page.
-function refineWith(word) {
-  var current = $("q").value.trim();
-  if (current.toLowerCase().indexOf(word.toLowerCase()) >= 0) return;
-  $("q").value = current + " " + word;
-  run({ page: 1 });
+function filterParams(f) {
+  var p = "";
+  if (f.language) p += "&lang=" + encodeURIComponent(f.language);
+  f.topics.forEach(function (t) { p += "&topic=" + encodeURIComponent(t); });
+  if (f.min_stars > 0) p += "&stars=" + f.min_stars;
+  if (f.pushed_within_days > 0) p += "&days=" + f.pushed_within_days;
+  return p;
 }
 
+// Une nouvelle question repart sans les criteres ajoutes a la precedente.
+// Changer de tri, de page ou d'option garde la question et ses criteres.
 function run(opts) {
   opts = opts || {};
   var phrase = $("q").value.trim();
   if (!phrase) return;
 
+  if (opts.fresh) state.filters = noFilters();
   if (opts.page) state.page = opts.page;
   if (opts.sort) { state.sort = opts.sort; state.page = 1; }
 
@@ -434,7 +599,8 @@ function run(opts) {
           + "&sort=" + encodeURIComponent(state.sort)
           + "&scope=" + encodeURIComponent(state.scope)
           + "&precision=" + encodeURIComponent(state.precision)
-          + "&page=" + state.page;
+          + "&page=" + state.page
+          + filterParams(state.filters);
 
   fetch(url)
     .then(function (r) { return r.json(); })
@@ -442,10 +608,17 @@ function run(opts) {
       renderReadback(data);
       if (data.error) {
         $("out").innerHTML = '<p class="erreur"><b>erreur</b>' + esc(data.error) + "</p>";
+        loadQuota();
         return;
       }
+      setQuota(data.quota);
+      // Le serveur fait foi: un critere qu'il a refuse ne reste pas affiche.
+      var f = (data.intent || {}).filters || {};
+      state.filters = {
+        language: f.language || "", topics: (f.topics || []).slice(),
+        min_stars: f.min_stars || 0, pushed_within_days: f.pushed_within_days || 0
+      };
       state.data = data;
-      state.filter = "tous";
       state.script = "tous";
       render();
     })
@@ -455,8 +628,26 @@ function run(opts) {
     .then(function () { $("go").disabled = false; });
 }
 
-// Ce que Quaero a compris, critere par critere, puis les mots qu'il a laisses
-// de cote et pourquoi. La phrase elle-meme reste dans la barre de recherche.
+function addFilter(kind, value) {
+  var f = state.filters;
+  if (kind === "lang") f.language = value;
+  if (kind === "topic" && f.topics.indexOf(value) < 0 && f.topics.length < MAX_FILTER_TOPICS) f.topics.push(value);
+  if (kind === "stars") f.min_stars = parseInt(value, 10);
+  if (kind === "days") f.pushed_within_days = parseInt(value, 10);
+  run({ page: 1 });
+}
+
+function removeFilter(kind, value) {
+  var f = state.filters;
+  if (kind === "lang") f.language = "";
+  if (kind === "topic") f.topics = f.topics.filter(function (t) { return t !== value; });
+  if (kind === "stars") f.min_stars = 0;
+  if (kind === "days") f.pushed_within_days = 0;
+  run({ page: 1 });
+}
+
+// Ce que Quaero a compris, critere par critere, puis les criteres ajoutes en
+// cliquant (retirables), puis les mots laisses de cote et pourquoi.
 function renderReadback(data) {
   var it = data.intent || {};
   var chips = "", generic = [], cut = [];
@@ -472,6 +663,12 @@ function renderReadback(data) {
     if (s.role === "limite") cut.push(s.text);
   });
 
+  var fl = it.filters || {};
+  if (fl.language) chips += added("langage", fl.language, "lang", fl.language);
+  (fl.topics || []).forEach(function (t) { chips += added("sujet", t, "topic", t); });
+  if (fl.pushed_within_days > 0) chips += added("mis à jour", since(fl.pushed_within_days), "days", fl.pushed_within_days);
+  if (fl.min_stars > 0) chips += added("popularité", stars(fl.min_stars), "stars", fl.min_stars);
+
   var h = "";
   if (chips) h += '<h2>Ce que Quaero a compris</h2><ul class="puces">' + chips + "</ul>";
   if (generic.length) {
@@ -485,6 +682,85 @@ function renderReadback(data) {
   }
   if (data.query) h += '<p class="requete">requête envoyée à GitHub <code>' + esc(data.query) + "</code></p>";
   $("readback").innerHTML = h ? '<section class="compris" aria-label="Ce que Quaero a compris">' + h + "</section>" : "";
+  bind("#readback [data-remove]", function (b) {
+    var parts = b.getAttribute("data-remove").split("|");
+    removeFilter(parts[0], parts.slice(1).join("|"));
+  });
+}
+
+function added(type, shown, kind, value) {
+  return '<li class="ajoute"><span class="type">' + esc(type) + "</span><b>" + esc(shown) + "</b>"
+    + '<button type="button" class="retirer" data-remove="' + esc(kind + "|" + value) + '" '
+    + 'aria-label="retirer le critère ' + esc(type + " " + shown) + '" title="retirer ce critère">×</button></li>';
+}
+
+// count compte les valeurs portees par les depots, les plus frequentes
+// d'abord, puis par ordre alphabetique.
+function count(repos, valuesOf) {
+  var n = {};
+  repos.forEach(function (r) {
+    valuesOf(r).forEach(function (v) { n[v] = (n[v] || 0) + 1; });
+  });
+  return Object.keys(n).map(function (k) { return [k, n[k]]; })
+    .sort(function (a, b) { return b[1] - a[1] || a[0].localeCompare(b[0]); });
+}
+
+// Les criteres pour resserrer viennent des depots charges: on ne propose que
+// ce qui s'y trouve, avec combien de depots le portent. Un critere que tous
+// portent deja ne change rien quand tout est charge, il n'est pas propose.
+function refineBlock(data, repos) {
+  var it = data.intent || {}, fl = it.filters || {};
+  var n = repos.length, total = data.total || 0;
+  var useful = function (c) { return c > 0 && (c < n || total > n); };
+  var rows = [];
+
+  if (!it.language && !fl.language) {
+    var langs = count(repos, function (r) { return r.language ? [r.language] : []; })
+      .filter(function (e) { return useful(e[1]); }).slice(0, 6);
+    if (langs.length) rows.push(["langage", langs.map(function (e) { return btn("data-add", "lang|" + e[0], e[0], false, e[1]); })]);
+  }
+
+  if ((fl.topics || []).length < MAX_FILTER_TOPICS) {
+    var known = {};
+    (it.terms || []).concat(it.topics || [], fl.topics || []).forEach(function (t) { known[slug(t)] = true; });
+    if (it.language || fl.language) known[slug(fl.language || it.language)] = true;
+    var topics = count(repos, function (r) { return r.topics || []; })
+      .filter(function (e) {
+        return !known[e[0]] && !/^hacktoberfest/.test(e[0]) && useful(e[1]) && (e[1] >= 2 || n < 10);
+      }).slice(0, 8);
+    if (topics.length) rows.push(["sujet", topics.map(function (e) { return btn("data-add", "topic|" + e[0], e[0], false, e[1]); })]);
+  }
+
+  var span = Math.min.apply(null, [it.pushed_within_days, fl.pushed_within_days].filter(function (d) { return d > 0; }).concat([Infinity]));
+  var fresh = ACTIVITY_STEPS.filter(function (s) { return s[0] < span; }).map(function (s) {
+    var c = repos.filter(function (r) { var d = (r.health || {}).days_since_push; return d != null && d >= 0 && d <= s[0]; }).length;
+    return useful(c) ? btn("data-add", "days|" + s[0], s[1], false, c) : "";
+  }).filter(Boolean);
+  if (fresh.length) rows.push(["mis à jour", fresh]);
+
+  var floor = Math.max(it.min_stars || 0, fl.min_stars || 0);
+  var pop = STAR_STEPS.filter(function (s) { return s > floor; }).map(function (s) {
+    var c = repos.filter(function (r) { return (r.stars || 0) >= s; }).length;
+    return useful(c) ? btn("data-add", "stars|" + s, stars(s), false, c) : "";
+  }).filter(Boolean);
+  if (pop.length) rows.push(["popularité", pop]);
+
+  var h = '<section class="preciser" aria-label="Resserrer la liste">';
+  if (total > (data.reachable || 0)) {
+    h += '<p class="aide"><b>' + fmt(total) + " dépôts</b> correspondent, GitHub ne rend que les "
+       + fmt(data.reachable) + " premiers. Ajoute un critère pour resserrer la liste.</p>";
+  } else {
+    h += '<p class="aide">Ajoute un critère pour resserrer la liste.</p>';
+  }
+  rows.forEach(function (row) {
+    h += '<div class="ligne"><span>' + esc(row[0]) + '</span><div class="boutons">' + row[1].join("") + "</div></div>";
+  });
+  if (rows.length) {
+    h += '<p class="base">Chaque choix relance la recherche. Les nombres comptent les ' + n + " dépôts chargés.</p>";
+  } else {
+    h += '<p class="base">Précise ta phrase avec un mot plus rare, un langage (« en rust »), une popularité (« populaire ») ou une fraîcheur (« maintenu »).</p>';
+  }
+  return h + "</section>";
 }
 
 function render() {
@@ -493,63 +769,50 @@ function render() {
   var repos = data.repos || [];
 
   if (!repos.length) {
-    $("out").innerHTML = '<p class="rien">Aucun dépôt sur cette page. Essaie des termes plus larges.</p>';
+    $("out").innerHTML = '<p class="rien">Aucun dépôt sur cette page. Essaie des termes plus larges, ou retire un critère ajouté.</p>';
     return;
   }
 
-  var counts = { tous: repos.length, sain: 0, calme: 0, dormant: 0, abandonne: 0, archive: 0 };
   var scripts = {};
   repos.forEach(function (r) {
-    var l = (r.health || {}).level;
-    if (counts[l] !== undefined) counts[l]++;
     var sc = r.script || "indetermine";
     scripts[sc] = (scripts[sc] || 0) + 1;
+  });
+  var shown = repos.filter(function (r) {
+    return state.script === "tous" || (r.script || "indetermine") === state.script;
   });
 
   var total = data.total || 0;
   var h = '<div class="bandeau"><h2>' + fmt(total) + (total > 1 ? " dépôts" : " dépôt")
-        + "<small>" + repos.length + " affichés</small></h2>";
-  var quota = data.quota || {};
-  if (quota.limit > 0 && quota.remaining < 200) {
-    // Un quota sur le point de manquer change ce qu'on fait ensuite. Tant
-    // qu'il ne manque pas, il n'a rien a faire a l'ecran.
-    h += '<span class="quota" title="Quota de l\'API GitHub'
-       + (quota.reset_at ? ", réinitialisé à " + esc(quota.reset_at) : "") + '">quota '
-       + fmt(quota.remaining) + "/" + fmt(quota.limit) + "</span>";
-  }
+        + "<small>" + shown.length + (shown.length > 1 ? " affichés" : " affiché") + "</small></h2>";
   h += '<label class="tri">trier <select id="tri">';
   SORTS.forEach(function (s) {
     h += '<option value="' + s[0] + '"' + (state.sort === s[0] ? " selected" : "") + ">" + esc(s[1]) + "</option>";
   });
   h += "</select></label></div>";
 
-  h += '<div class="filtres"><div class="boutons" role="group" aria-label="Filtrer par activité">';
-  ["tous", "sain", "calme", "dormant", "abandonne", "archive"].forEach(function (level) {
-    if (level !== "tous" && counts[level] === 0) return;
-    h += btn("data-filter", level, level === "tous" ? "tous" : HEALTH_LABEL[level],
-      state.filter === level, counts[level]);
-  });
-  h += "</div>";
+  // Tant que tout n'est pas charge, il y a de quoi resserrer.
+  if (total > repos.length) h += refineBlock(data, repos);
+
+  // L'ecriture des descriptions n'existe pas comme critere chez GitHub: ce
+  // filtre-ci trie la page affichee, sans nouvelle recherche.
   var scriptKeys = Object.keys(scripts);
   if (scriptKeys.length > 1) {
-    h += '<div class="boutons" role="group" aria-label="Filtrer par écriture">'
+    h += '<div class="filtres"><span>description en</span><div class="boutons" role="group" aria-label="Filtrer par écriture">'
        + btn("data-script", "tous", "toutes écritures", state.script === "tous", null);
     scriptKeys.sort(function (a, b) { return scripts[b] - scripts[a]; }).forEach(function (sc) {
       h += btn("data-script", sc, SCRIPT_LABEL[sc] || sc, state.script === sc, scripts[sc]);
     });
-    h += "</div>";
+    h += "</div></div>";
   }
-  h += "</div>";
 
   if (data.note) h += '<p class="note">' + esc(data.note) + "</p>";
 
   var offset = ((data.page || 1) - 1) * 50;
   h += '<ol class="liste">';
   repos.forEach(function (r, i) {
-    var okHealth = state.filter === "tous" || (r.health || {}).level === state.filter;
-    var okScript = state.script === "tous" || (r.script || "indetermine") === state.script;
     // Le rang reste celui du classement, meme quand un filtre masque des depots.
-    if (okHealth && okScript) h += card(r, offset + i + 1);
+    if (shown.indexOf(r) >= 0) h += card(r, offset + i + 1);
   });
   h += "</ol>";
 
@@ -557,16 +820,18 @@ function render() {
   $("out").innerHTML = h;
 
   $("tri").onchange = function () { run({ sort: this.value }); };
-  bind("#out [data-filter]", function (b) { state.filter = b.getAttribute("data-filter"); render(); });
+  bind("#out [data-add]", function (b) {
+    var parts = b.getAttribute("data-add").split("|");
+    addFilter(parts[0], parts.slice(1).join("|"));
+  });
   bind("#out [data-script]", function (b) { state.script = b.getAttribute("data-script"); render(); });
   bind("#out [data-page]", function (b) { run({ page: parseInt(b.getAttribute("data-page"), 10) }); });
-  bind("#out [data-refine]", function (b) { refineWith(b.getAttribute("data-refine")); });
 }
 
-function btn(attr, value, label, active, count) {
+function btn(attr, value, text, active, n) {
   var h = '<button type="button" class="choix' + (active ? " on" : "") + '" '
-        + attr + '="' + esc(value) + '" aria-pressed="' + (active ? "true" : "false") + '">' + esc(label);
-  if (count !== null && count !== undefined) h += '<span class="n">' + count + "</span>";
+        + attr + '="' + esc(value) + '" aria-pressed="' + (active ? "true" : "false") + '">' + esc(text);
+  if (n !== null && n !== undefined) h += '<span class="n">' + n + "</span>";
   return h + "</button>";
 }
 
@@ -622,16 +887,6 @@ function card(r, position) {
   var details = "";
   if (r.why && r.why.length) details += "<p>" + esc(r.why.join(", ")) + ".</p>";
   if (health.notes && health.notes.length) details += "<p>" + esc(health.notes.join(". ")) + ".</p>";
-  var refine = [];
-  if (r.language) refine.push(r.language);
-  (r.topics || []).slice(0, 8).forEach(function (t) { refine.push(t); });
-  if (refine.length) {
-    details += '<div class="affiner"><span>affiner avec</span>';
-    refine.forEach(function (w) {
-      details += '<button type="button" class="sujet" data-refine="' + esc(w) + '">' + esc(w) + "</button>";
-    });
-    details += "</div>";
-  }
   if (details) {
     h += '<details class="plus"><summary>pourquoi ce rang</summary><div class="plus-corps">' + details + "</div></details>";
   }
