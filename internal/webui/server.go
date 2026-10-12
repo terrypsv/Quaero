@@ -29,12 +29,6 @@ import (
 //go:embed index.html
 var indexHTML []byte
 
-// sessionHTML est la page montree a un navigateur sans session. Elle ne charge
-// rien: sans session, meme les polices restent fermees.
-//
-//go:embed session.html
-var sessionHTML []byte
-
 // fontFiles porte les polices de l'interface, produites par scripts/polices.py
 // et livrees avec leur licence. Elles sont dans le binaire parce que la
 // politique de contenu n'autorise aucune ressource exterieure.
@@ -68,22 +62,19 @@ type Searcher interface {
 type Server struct {
 	Client  Searcher
 	Version string
-	// Token est le jeton de session de cette execution (voir NewToken). Vide,
-	// toute requete est refusee.
-	Token string
 	// Addr est l'adresse d'ecoute, d'ou derivent les en-tetes Host acceptes.
 	Addr string
 }
 
-// Handler wires the routes behind the session guard: no route is reachable
-// without a valid Host and session token.
+// Handler wires the routes behind the host guard: no route is reachable with
+// a Host that does not designate this machine.
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", s.handleIndex)
 	mux.HandleFunc("/api/search", s.handleSearch)
 	mux.HandleFunc("/api/version", s.handleVersion)
 	mux.HandleFunc("/fonts/", s.handleFont)
-	return guard{token: s.Token, allowed: allowedHosts(s.Addr), next: mux}
+	return guard{allowed: allowedHosts(s.Addr), next: mux}
 }
 
 func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {

@@ -87,14 +87,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, "  bash       : export GITHUB_TOKEN=...")
 		os.Exit(2)
 	}
-	// Un jeton par execution: il ouvre la session dans le navigateur et n'est
-	// ecrit nulle part ailleurs que dans ce terminal.
-	token, err := webui.NewToken()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "erreur: jeton de session: %v\n", err)
-		os.Exit(2)
-	}
-	server := &webui.Server{Client: client, Version: version, Token: token, Addr: *addr}
+	server := &webui.Server{Client: client, Version: version, Addr: *addr}
 	httpServer := &http.Server{
 		Addr:              *addr,
 		Handler:           server.Handler(),
@@ -103,10 +96,9 @@ func main() {
 	// The default address is loopback on purpose: the process carries a GitHub
 	// token, and a tool bound to every interface by default is a tool that
 	// leaks that token the first time it runs on an untrusted network.
-	fmt.Printf("quaero %s - %s\n", version, webui.SessionURL(*addr, token))
-	fmt.Println("Ce lien ouvre la session. Il ne vaut que pour cette execution, ne le partage pas.")
+	fmt.Printf("quaero %s - %s\n", version, webui.URL(*addr))
 	if webui.ListensEverywhere(*addr) {
-		fmt.Fprintln(os.Stderr, "attention: ecoute sur toutes les interfaces. Le jeton reste exige, mais l'interface est visible du reseau.")
+		fmt.Fprintln(os.Stderr, "attention: ecoute sur toutes les interfaces, sans aucune protection. Toute machine du reseau peut utiliser l'interface et le jeton GitHub qu'elle porte.")
 	}
 	if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatalf("serveur: %v", err)

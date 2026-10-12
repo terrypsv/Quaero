@@ -61,14 +61,6 @@ func TestPoliceRefusee(t *testing.T) {
 	}
 }
 
-func TestPoliceSousSession(t *testing.T) {
-	rec := httptest.NewRecorder()
-	rawServer().ServeHTTP(rec, req(http.MethodGet, "/fonts/"+polices[0], testAddr, ""))
-	if rec.Code != http.StatusUnauthorized {
-		t.Fatalf("code = %d, attendu 401 sans session", rec.Code)
-	}
-}
-
 func TestCSPAutoriseLesPolicesLocales(t *testing.T) {
 	rec := httptest.NewRecorder()
 	newServer(&fakeSearcher{}).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
@@ -77,27 +69,11 @@ func TestCSPAutoriseLesPolicesLocales(t *testing.T) {
 	}
 }
 
-// Sans session, le navigateur recoit une page qui dit quoi faire. L'API garde
-// sa reponse JSON (voir TestSansSessionRefuse).
-func TestPageSessionEnHTML(t *testing.T) {
-	rec := httptest.NewRecorder()
-	rawServer().ServeHTTP(rec, req(http.MethodGet, "/", testAddr, ""))
-	if rec.Code != http.StatusUnauthorized {
-		t.Fatalf("code = %d, attendu 401", rec.Code)
-	}
-	if ct := rec.Header().Get("Content-Type"); !strings.HasPrefix(ct, "text/html") {
-		t.Errorf("Content-Type = %q, attendu text/html", ct)
-	}
-	if !strings.Contains(rec.Body.String(), "Session") || !strings.Contains(rec.Body.String(), "terminal") {
-		t.Error("la page doit dire d'ouvrir le lien du terminal")
-	}
-}
-
-// Rien d'exterieur dans les pages: la politique de contenu le bloquerait de
+// Rien d'exterieur dans la page: la politique de contenu le bloquerait de
 // toute facon, mais une page qui en depend s'afficherait cassee.
 func TestPagesSansRessourceExterieure(t *testing.T) {
 	externe := regexp.MustCompile(`(?i)(src|href)\s*=\s*["']?https?:|url\(\s*["']?https?:|@import`)
-	for name, page := range map[string][]byte{"index.html": indexHTML, "session.html": sessionHTML} {
+	for name, page := range map[string][]byte{"index.html": indexHTML} {
 		if loc := externe.FindIndex(page); loc != nil {
 			t.Errorf("%s charge une ressource exterieure: %q", name, page[loc[0]:loc[1]+20])
 		}
