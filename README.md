@@ -207,12 +207,25 @@ de `Host`. Plus rien ne protège alors l'interface, et le terminal le signale.
 | `maintenu`, `encore actif`, `recent` | fenêtre de fraîcheur |
 | `populaire`, `tres utilise` | plancher d'étoiles |
 | `au moins 2000 etoiles` | plancher explicite, prioritaire |
+| `pas de nmap`, `sauf cowrie`, `hors windows`, `-nmap` | mot écarté (`NOT`) |
+| `licence mit`, `sous licence apache` | licence (`license:`) |
 | `y compris les forks` | annule l'exclusion par défaut |
 | `y compris archives` | annule l'exclusion par défaut |
 
 Les forks et les dépôts archivés sont écartés par défaut: ils forment
 l'essentiel du bruit dans les résultats natifs, et qui cherche une
 bibliothèque à utiliser n'en veut presque jamais.
+
+Un mot écarté l'est en entier ("pas de go" n'écarte pas "google"), quatre au
+plus, parce que GitHub refuse une requête de plus de cinq `NOT`. Il est aussi
+retiré des résultats par Quaero, pour que l'exclusion tienne quelle que soit
+la formulation qui a trouvé le dépôt. "sans" n'écarte rien: "sans agent",
+"sans fichier" ou "sans dépendance" décrivent une caractéristique, et
+deviennent `agentless`, `fileless` ou `zero-dependency`.
+
+Pendant la frappe, une ligne sous la barre montre ce que Quaero cherchera,
+écartera ou ignorera. Cette lecture ne demande rien à GitHub et ne coûte
+aucune requête du quota.
 
 ## Trier autrement
 
@@ -242,18 +255,36 @@ pages qui reviendraient vides serait pire que d'annoncer la limite.
 ## Resserrer une liste trop longue
 
 Tant que tout n'est pas chargé, un bloc propose de resserrer la liste avec ce
-que contiennent les dépôts chargés eux-mêmes, langages, sujets, date du dernier
-envoi et popularité, chacun avec le nombre de dépôts qui le portent. Quand la
-recherche dépasse les mille résultats que GitHub rend, le bloc le dit.
+que contiennent les dépôts chargés eux-mêmes, chacun avec le nombre de dépôts
+qui le portent.
 
-Un choix devient un qualificatif GitHub (`language:`, `topic:`, `pushed:`,
-`stars:`) appliqué à toutes les formulations de la question et aux autres
-langues. Il réduit donc le total, pas seulement la page affichée. Le langage
+| Critère | Ce qu'il ajoute à la requête |
+|---------|------------------------------|
+| langage | `language:` |
+| sujet, trois au plus | `topic:` |
+| listes, écarter les listes awesome | `NOT awesome -topic:awesome-list -topic:awesome` |
+| mis à jour, moins de 3 mois ou d'un an | `pushed:>=` |
+| popularité, 100, 1 000 ou 10 000 étoiles | `stars:>=` |
+| licence | `license:` |
+| auteur, quand il revient plusieurs fois | `user:` |
+
+Quand la recherche dépasse les mille résultats que GitHub rend, le bloc le
+dit. Un choix devient un qualificatif GitHub appliqué à toutes les
+formulations de la question et aux autres langues. Il réduit donc le total, pas seulement la page affichée. Le langage
 choisi remplace celui de la phrase, et pour les étoiles ou la fraîcheur le plus
 exigeant des deux l'emporte. Les critères ajoutés s'affichent avec ce que
 Quaero a compris et se retirent d'un clic. Le desserrage ne les retire jamais,
 ce sont des exigences et non des suppositions. Une nouvelle question repart
 sans eux.
+
+La langue de la description, que GitHub ne connaît pas, est détectée par
+Quaero, par l'écriture pour le chinois, le japonais, le coréen, le russe ou
+l'arabe, et par les petits mots de chaque langue ("the", "pour", "und") pour
+distinguer l'anglais du français, de l'espagnol, du portugais, de l'allemand
+ou de l'italien. Un filtre l'utilise sur la page affichée, sans nouvelle
+recherche, et le choix reste d'une page à l'autre tant que la question ne
+change pas. Une description sans aucun petit mot ("SSH honeypot") compte comme
+anglaise, ce qu'elle est presque toujours.
 
 ## Le classement
 

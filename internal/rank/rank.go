@@ -147,6 +147,7 @@ func Score(repos []model.Repo, in model.Intent, mode string) []model.Repo {
 		r := &out[i]
 		r.Health = Rate(*r)
 		r.Script = DetectScript(r.Description)
+		r.Lang = DetectLanguage(r.Description)
 		r.Score = 0
 		r.Why = nil
 

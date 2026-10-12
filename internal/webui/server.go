@@ -22,6 +22,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/terrypsv/Quaero/internal/github"
 	"github.com/terrypsv/Quaero/internal/intent"
@@ -97,6 +98,7 @@ func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", s.handleIndex)
 	mux.HandleFunc("/api/search", s.handleSearch)
+	mux.HandleFunc("/api/read", s.handleRead)
 	mux.HandleFunc("/api/quota", s.handleQuota)
 	mux.HandleFunc("/api/version", s.handleVersion)
 	mux.HandleFunc("/fonts/", s.handleFont)
@@ -174,9 +176,29 @@ func quotaOf(rate github.RateLimit, now time.Time) model.Quota {
 	return q
 }
 
+// handleRead returns how a phrase is read, without asking GitHub anything.
+// The page calls it while the phrase is being typed, so that what will be
+// searched is visible before a single request of the quota is spent.
+func (s *Server) handleRead(w http.ResponseWriter, r *http.Request) {
+	phrase := r.URL.Query().Get("q")
+	if strings.TrimSpace(phrase) == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "parametre q manquant"})
+		return
+	}
+	in := intent.Read(phrase)
+	if r.URL.Query().Get("scope") == scopeFrench {
+		in = intent.French(in)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"intent": in, "query": intent.Query(in)})
+}
+
 var (
 	// GitHub topics: lowercase letters, digits and hyphens, fifty at most.
 	topicRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,49}$`)
+	// GitHub license keys: mit, apache-2.0, bsd-3-clause...
+	licenseRe = regexp.MustCompile(`^[a-z0-9][a-z0-9.-]{0,30}$`)
+	// GitHub logins: letters, digits and single hyphens, 39 at most.
+	ownerRe = regexp.MustCompile(`^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$`)
 	// GitHub language names: letters, digits, and the few signs real names
 	// carry (C++, C#, Objective-C, Ren'Py, Jupyter Notebook).
 	languageRe = regexp.MustCompile(`^[\p{L}\p{N}][\p{L}\p{N} +#.'-]{0,39}$`)
@@ -207,7 +229,79 @@ func readFilters(v url.Values) model.Filters {
 	if n, err := strconv.Atoi(v.Get("days")); err == nil && n > 0 && n <= 3650 {
 		f.PushedWithinDays = n
 	}
+	// "noassertion" et "other" sont ce que GitHub renvoie pour une licence
+	// qu'il ne reconnait pas: ce ne sont pas des cles cherchables.
+	if lic := strings.ToLower(strings.TrimSpace(v.Get("license"))); licenseRe.MatchString(lic) && lic != "noassertion" && lic != "other" {
+		f.License = lic
+	}
+	if owner := strings.TrimSpace(v.Get("owner")); ownerRe.MatchString(owner) {
+		f.Owner = owner
+	}
+	f.NoLists = v.Get("nolists") == "1"
 	return f
+}
+
+// isList reports whether a repository is an "awesome" list: a page of links
+// to tools rather than a tool.
+func isList(r model.Repo) bool {
+	if strings.HasPrefix(strings.ToLower(r.Name), "awesome") {
+		return true
+	}
+	for _, t := range r.Topics {
+		if t == "awesome" || t == "awesome-list" || t == "awesome-lists" {
+			return true
+		}
+	}
+	return false
+}
+
+// keep removes what the phrase or the filters asked to keep out. GitHub
+// applies NOT to the queries that carry words, but the topic strategy has
+// none, and a list can be named "awesome" without saying so in its topics.
+// Checking the merged results here makes the exclusion hold whatever query
+// found the repository.
+func keep(repos []model.Repo, in model.Intent) []model.Repo {
+	if len(in.Exclude) == 0 && !in.Filters.NoLists {
+		return repos
+	}
+	out := make([]model.Repo, 0, len(repos))
+	for _, r := range repos {
+		if in.Filters.NoLists && isList(r) {
+			continue
+		}
+		if mentions(r, in.Exclude) {
+			continue
+		}
+		out = append(out, r)
+	}
+	return out
+}
+
+// mentions reports whether a repository carries one of the words, in its
+// name, description or topics, the fields GitHub searches by default. Whole
+// words only, as GitHub matches them: excluding "go" must not exclude
+// "google". Hyphens and spaces are treated alike, "active-directory" matches
+// "Active Directory".
+func mentions(r model.Repo, words []string) bool {
+	if len(words) == 0 {
+		return false
+	}
+	hay := flatWords(r.Name + " " + r.Description + " " + strings.Join(r.Topics, " "))
+	for _, w := range words {
+		if w = flatWords(w); w != "  " && strings.Contains(hay, w) {
+			return true
+		}
+	}
+	return false
+}
+
+// flatWords lowercases s and keeps its words, separated and surrounded by
+// single spaces, so that a word can be looked for with its boundaries.
+func flatWords(s string) string {
+	fields := strings.FieldsFunc(strings.ToLower(s), func(r rune) bool {
+		return !unicode.IsLetter(r) && !unicode.IsNumber(r) && r != '+' && r != '#'
+	})
+	return " " + strings.Join(fields, " ") + " "
 }
 
 func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
@@ -308,6 +402,7 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 	for _, key := range order {
 		repos = append(repos, *merged[key])
 	}
+	repos = keep(repos, in)
 
 	// Widening runs the same search with the head term written as other
 	// communities write it. A very large part of GitHub is described in
@@ -338,6 +433,7 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 				repos = append(repos, candidate)
 			}
 		}
+		repos = keep(repos, in)
 	}
 
 	// Une page vide est la pire reponse possible: elle ne distingue pas
@@ -353,7 +449,7 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 			}
 			relaxed = append(relaxed, step.Reason)
 			if stepTotal > 0 {
-				repos, total, query, in = stepRepos, stepTotal, step.Query, step.Intent
+				repos, total, query, in = keep(stepRepos, step.Intent), stepTotal, step.Query, step.Intent
 				queries = append(queries, step.Query)
 				break
 			}
