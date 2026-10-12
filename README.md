@@ -317,14 +317,32 @@ ne peut interroger est un classement auquel personne ne devrait se fier.
 ## Audit de code
 
 Au-delà de la santé d'un dépôt, Quaero audite la sécurité de son code. Le
-périmètre reste la lecture: l'outil analyse un dépôt **déjà cloné sur le
-disque**, il ne sonde ni n'exploite aucun système en fonctionnement.
+périmètre reste la lecture: l'outil analyse du code source, il ne sonde ni
+n'exploite aucun système en fonctionnement.
+
+`-scan` prend un chemin local, ou une référence de dépôt GitHub public à
+cloner. Un dépôt public se nomme par `owner/repo` ou par son URL github.com;
+Quaero le clone en superficiel dans un dossier temporaire, l'analyse, puis
+efface le clone. Nommer la cible reste un acte humain, Quaero ne cherche pas de
+cible. Un dossier local déjà présent l'emporte sur une référence de même forme.
 
 ```bash
 quaero -scan /chemin/vers/un/depot
-quaero -scan /chemin/vers/un/depot -scan-json rapport.json
+quaero -scan mushorg/cowrie
+quaero -scan https://github.com/mushorg/cowrie
+quaero -scan mushorg/cowrie -scan-json rapport.json
 quaero -scan /chemin/vers/un/depot -scan-timeout 30m
 ```
+
+Analyser du code tiers n'est pas sans risque: govulncheck charge le graphe des
+paquets, ce qui compile le code analysé. Pour un dépôt cloné, Quaero durcit
+donc l'environnement des moteurs, une chaîne d'outils Go qui ne peut pas être
+remplacée par le `go.mod` de la cible (`GOTOOLCHAIN=local`), pas de cgo
+(`CGO_ENABLED=0`, aucun compilateur C lancé sur la cible), pas d'invite
+d'authentification. Le clone est superficiel, sans étiquettes, sans
+sous-modules et sans hooks. Ce n'est pas une isolation complète, le bac à sable
+d'exécution reste à faire: pour du code vraiment douteux, cloner et scanner
+dans une machine jetable. Un scan local, lui, tourne sans ce durcissement.
 
 Quaero n'invente pas de moteur: il orchestre des analyseurs statiques établis,
 **multi-langages**, et normalise leurs sorties dans le schéma de constat
@@ -385,7 +403,7 @@ internal/intent/    lecture de la phrase vers des facettes
 internal/github/    appel de l'API de recherche, sans jugement
 internal/rank/      pertinence et santé, deux jugements distincts
 internal/audit/     santé des dépôts d'une requête, vers le schéma de constat
-internal/codescan/  audit de code d'un dépôt local (govulncheck, gosec)
+internal/codescan/  audit de code (govulncheck, gosec, semgrep, osv-scanner)
 internal/finding/   schéma de constat partagé par la suite
 internal/webui/     serveur HTTP, cache des pages, page et polices embarquées
 scripts/polices.py  récupération des polices de l'interface

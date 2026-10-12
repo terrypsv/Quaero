@@ -81,6 +81,10 @@ lecture: Quaero analyse, il n'exploite rien.
 - [x] semgrep sans télémétrie (`--metrics=off`, `p/default`), utilisable sous
       Windows via pipx ou uv
 - [x] Contrôle de `Host` contre le DNS rebinding, politique de contenu stricte
+- [x] `-scan owner/repo`: clone superficiel d'un dépôt public GitHub, scan,
+      puis effacement du clone. Cible nommée à la main, jamais cherchée.
+      Environnement des moteurs durci pour du code tiers (GOTOOLCHAIN=local,
+      CGO_ENABLED=0, pas de hooks ni de sous-modules)
 - [ ] Session locale par jeton (lien du terminal, cookie `HttpOnly`
       `SameSite=Strict`), retirée pendant le développement de l'interface. À
       remettre avant la première version publiée et avant toute route qui

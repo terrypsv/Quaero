@@ -41,6 +41,12 @@ func runTool(ctx context.Context, bin, dir string, args ...string) (toolResult, 
 	cmd := exec.CommandContext(ctx, bin, args...)
 	cmd.Dir = dir
 	cmd.WaitDelay = waitDelay
+	// Un scan marque non fiable impose un environnement durci aux moteurs
+	// (voir sandbox.go). Les variables s'ajoutent apres celles du processus,
+	// donc elles l'emportent.
+	if env := scanEnv(ctx); env != nil {
+		cmd.Env = append(cmd.Environ(), env...)
+	}
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
