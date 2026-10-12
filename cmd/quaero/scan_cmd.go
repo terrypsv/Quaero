@@ -85,6 +85,11 @@ func runScan(target, jsonPath string, timeout time.Duration) (int, error) {
 	// Le rapport nomme la cible par son depot, pas par le dossier temporaire du
 	// clone, qui ne dit rien a personne.
 	rep.Run.Context["cible"] = label
+	// Le commit analyse: un signalement doit dire quelle revision a ete lue,
+	// le depot ayant pu changer entre le scan et l'envoi.
+	if commit := headCommit(ctx, dir); commit != "" {
+		rep.Run.Context["commit"] = commit
+	}
 	fmt.Printf("Analyse de %s\n", label)
 	if untrusted {
 		fmt.Println("Depot tiers: environnement des moteurs durci. Pour du code douteux, scanner dans une machine jetable.")

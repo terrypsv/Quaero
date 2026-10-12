@@ -98,6 +98,29 @@ func cloneRepo(ctx context.Context, ref repoRef) (string, func(), error) {
 	return dir, cleanup, nil
 }
 
+// headCommit rend le commit courant du depot a dir, ou "" si ce n'est pas un
+// depot git ou si git est absent. C'est une information de contexte: son
+// absence n'empeche pas le scan.
+func headCommit(ctx context.Context, dir string) string {
+	git, err := exec.LookPath("git")
+	if err != nil {
+		return ""
+	}
+	// #nosec G204 -- git resolu par LookPath, arguments fixes, dossier analyse.
+	// nosemgrep: go.lang.security.audit.dangerous-exec-command.dangerous-exec-command
+	out, err := exec.CommandContext(ctx, git, "-C", dir, "rev-parse", "HEAD").Output()
+	if err != nil {
+		return ""
+	}
+	commit := strings.TrimSpace(string(out))
+	if !commitRe.MatchString(commit) {
+		return ""
+	}
+	return commit
+}
+
+var commitRe = regexp.MustCompile(`^[0-9a-f]{40}([0-9a-f]{24})?$`)
+
 // firstLine garde la premiere ligne utile d'une sortie d'erreur de git, pour un
 // message court plutot qu'un pave.
 func firstLine(out []byte) string {

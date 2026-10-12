@@ -35,6 +35,9 @@ func main() {
 	scanPath := flag.String("scan", "", "analyser le code d'un depot, puis quitter: un chemin local, ou un depot github (owner/repo ou URL github.com) a cloner")
 	scanJSON := flag.String("scan-json", "", "avec -scan: ecrire le rapport au schema partage dans ce fichier")
 	scanTimeout := flag.Duration("scan-timeout", codescan.DefaultTimeout, "avec -scan: duree maximale accordee a chaque moteur (ex. 5m, 30m)")
+	advisoryReport := flag.String("advisory", "", "lire un rapport ecrit par -scan-json et lister les constats a signaler, puis quitter")
+	advisoryFinding := flag.String("finding", "", "avec -advisory: preparer le brouillon de signalement de ce constat")
+	advisoryOut := flag.String("advisory-out", "", "avec -advisory et -finding: ecrire le brouillon dans ce fichier")
 	flag.Parse()
 
 	if *showVersion {
@@ -62,6 +65,13 @@ func main() {
 	}
 	if *auditQuery != "" {
 		code, err := runAudit(*auditQuery, *auditLimit, *auditJSON)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "erreur: %v\n", err)
+		}
+		os.Exit(code)
+	}
+	if *advisoryReport != "" {
+		code, err := runAdvisory(*advisoryReport, *advisoryFinding, *advisoryOut)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "erreur: %v\n", err)
 		}

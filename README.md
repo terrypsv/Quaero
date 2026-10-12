@@ -401,6 +401,34 @@ produit des **candidats**, pas des verdicts: confirmer une faille se fait sur
 une instance locale montée soi-même, et la déclarer passe par une divulgation
 coordonnée (GitHub Security Advisory). L'outil trie, l'opérateur décide.
 
+### Préparer un signalement
+
+`-advisory` lit un rapport écrit par `-scan-json`. Sans autre option, il liste
+les constats qui peuvent devenir un signalement, en laissant de côté ceux qui
+décrivent le scan lui-même (moteur absent, en panne). Avec `-finding`, il
+prépare le brouillon d'un constat, dans la forme d'un GitHub Security Advisory.
+
+```bash
+quaero -scan owner/repo -scan-json rapport.json
+quaero -advisory rapport.json
+quaero -advisory rapport.json -finding <identifiant> -advisory-out brouillon.md
+```
+
+Le brouillon reprend ce que le scan sait: le dépôt, le commit analysé, l'endroit
+du code ou la dépendance, la règle, le moteur, les références (CWE, CVE, GHSA,
+OSV) avec leur lien. Il laisse à remplir ce que seul l'opérateur peut établir,
+la reproduction sur une instance locale montée soi-même, l'impact réel et le
+correctif proposé. Le corps est en anglais, la langue commune des mainteneurs.
+Une liste de contrôle en français l'ouvre, en commentaire, à retirer avant
+l'envoi: confirmer, vérifier que la faille n'est pas déjà connue, trouver le
+canal privé du dépôt (onglet Security ou `SECURITY.md`), ne rien publier avant
+le correctif. Pour une vulnérabilité de dépendance déjà publique, elle rappelle
+de vérifier que le projet est réellement touché, sans quoi une simple mise à
+jour suffit.
+
+Quaero n'envoie rien. Le brouillon est écrit en `0600`, puisqu'il décrit une
+faille encore non corrigée.
+
 ## Structure
 
 ```
@@ -409,6 +437,7 @@ internal/github/    appel de l'API de recherche, sans jugement
 internal/rank/      pertinence et santé, deux jugements distincts
 internal/audit/     santé des dépôts d'une requête, vers le schéma de constat
 internal/codescan/  audit de code (govulncheck, gosec, semgrep, osv-scanner)
+internal/advisory/  brouillon de signalement privé à partir d'un constat
 internal/finding/   schéma de constat partagé par la suite
 internal/webui/     serveur HTTP, cache des pages, page et polices embarquées
 scripts/polices.py  récupération des polices de l'interface
