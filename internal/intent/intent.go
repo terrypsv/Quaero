@@ -124,7 +124,7 @@ var includeForkPhrases = []string{"y compris les forks", "avec les forks", "incl
 var includeArchivedPhrases = []string{"y compris archives", "meme archives", "including archived"}
 
 var starFloorRe = regexp.MustCompile(`(?:plus de|au moins|min|>=?)\s*(\d+)\s*(?:etoiles?|stars?)`)
-var wordSplit = regexp.MustCompile(`[^\p{L}\p{N}+#._-]+`)
+var wordRe = regexp.MustCompile(`[\p{L}\p{N}+#._-]+`)
 
 // Read turns a phrase into an Intent.
 //
@@ -140,26 +140,29 @@ func Read(phrase string) model.Intent {
 		ExcludeArchived: true,
 	}
 
-	normalised := normalise(phrase)
-	rest := normalised
+	rd := newReader(phrase)
 
 	// Explicit star floor beats the vague popularity words.
-	if m := starFloorRe.FindStringSubmatch(rest); m != nil {
-		if n, err := strconv.Atoi(m[1]); err == nil {
-			out.MinStars = n
-			out.Explain = append(out.Explain, "au moins "+m[1]+" etoiles")
-			rest = strings.Replace(rest, m[0], " ", 1)
+	for _, m := range starFloorRe.FindAllStringSubmatchIndex(rd.rest, -1) {
+		if !rd.startsWord(m[0]) {
+			continue
 		}
+		if n, err := strconv.Atoi(rd.rest[m[2]:m[3]]); err == nil {
+			out.MinStars = n
+			out.Explain = append(out.Explain, "au moins "+rd.rest[m[2]:m[3]]+" etoiles")
+			rd.take(m[0], rd.wordEnd(m[1]), model.RoleStars, strconv.Itoa(n))
+		}
+		break
 	}
 
 	for _, p := range popularityPhrases {
 		if out.MinStars > 0 {
 			break
 		}
-		if strings.Contains(rest, p.phrase) {
+		if start, end, ok := rd.find(p.phrase); ok {
 			out.MinStars = p.stars
 			out.Explain = append(out.Explain, "populaire: au moins "+strconv.Itoa(p.stars)+" etoiles")
-			rest = strings.Replace(rest, p.phrase, " ", 1)
+			rd.take(start, end, model.RoleStars, strconv.Itoa(p.stars))
 		}
 	}
 
@@ -167,25 +170,25 @@ func Read(phrase string) model.Intent {
 		if out.PushedWithinDays > 0 {
 			break
 		}
-		if strings.Contains(rest, p.phrase) {
+		if start, end, ok := rd.find(p.phrase); ok {
 			out.PushedWithinDays = p.days
 			out.Explain = append(out.Explain, "maintenu: pousse depuis moins de "+strconv.Itoa(p.days)+" jours")
-			rest = strings.Replace(rest, p.phrase, " ", 1)
+			rd.take(start, end, model.RoleRecency, strconv.Itoa(p.days))
 		}
 	}
 
 	for _, p := range includeForkPhrases {
-		if strings.Contains(rest, p) {
+		if start, end, ok := rd.find(p); ok {
 			out.ExcludeForks = false
 			out.Explain = append(out.Explain, "forks inclus")
-			rest = strings.Replace(rest, p, " ", 1)
+			rd.take(start, end, model.RoleForks, "")
 		}
 	}
 	for _, p := range includeArchivedPhrases {
-		if strings.Contains(rest, p) {
+		if start, end, ok := rd.find(p); ok {
 			out.ExcludeArchived = false
 			out.Explain = append(out.Explain, "depots archives inclus")
-			rest = strings.Replace(rest, p, " ", 1)
+			rd.take(start, end, model.RoleArchived, "")
 		}
 	}
 
@@ -194,9 +197,17 @@ func Read(phrase string) model.Intent {
 	// and "data" alone drags in every repository that mentions it.
 	var collapsed []string
 	for _, m := range multiWord {
-		if strings.Contains(rest, m.phrase) {
+		found := false
+		for {
+			start, end, ok := rd.find(m.phrase)
+			if !ok {
+				break
+			}
+			found = true
+			rd.take(start, end, model.RoleTerm, m.term)
+		}
+		if found {
 			collapsed = append(collapsed, m.term)
-			rest = strings.Replace(rest, m.phrase, " ", -1)
 		}
 	}
 
@@ -217,17 +228,17 @@ func Read(phrase string) model.Intent {
 		}
 	}
 
-	for _, word := range wordSplit.Split(rest, -1) {
-		word = strings.TrimSpace(word)
-		if word == "" {
-			continue
-		}
+	for _, loc := range wordRe.FindAllStringIndex(rd.rest, -1) {
+		start, end := loc[0], loc[1]
+		word := rd.rest[start:end]
 		if lang, ok := languages[word]; ok && out.Language == "" {
 			out.Language = lang
 			out.Explain = append(out.Explain, "langage: "+lang)
+			rd.take(start, end, model.RoleLanguage, lang)
 			continue
 		}
 		if stopWords[word] || len(word) < 2 {
+			rd.take(start, end, model.RoleEmpty, "")
 			continue
 		}
 		// Generic nouns describe the kind of thing, not what it does. GitHub
@@ -236,6 +247,7 @@ func Read(phrase string) model.Intent {
 		// zero results for a query that would otherwise have worked.
 		if generic[word] {
 			dropped++
+			rd.take(start, end, model.RoleGeneric, "")
 			continue
 		}
 
@@ -243,6 +255,7 @@ func Read(phrase string) model.Intent {
 		if term != word {
 			translated++
 		}
+		rd.take(start, end, model.RoleTerm, term)
 		if seenTerm[term] {
 			continue
 		}
@@ -270,6 +283,11 @@ func Read(phrase string) model.Intent {
 	if len(out.Terms) > 4 {
 		out.Terms = out.Terms[:4]
 		out.Explain = append(out.Explain, "requete limitee aux quatre termes les plus significatifs")
+		kept := map[string]bool{}
+		for _, t := range out.Terms {
+			kept[t] = true
+		}
+		rd.relabel(kept)
 	}
 
 	if len(out.Terms) == 0 && out.Language != "" {
@@ -277,6 +295,7 @@ func Read(phrase string) model.Intent {
 		// rather than searching for nothing.
 		out.Terms = append(out.Terms, strings.ToLower(out.Language))
 	}
+	out.Reading = rd.segments()
 	return out
 }
 

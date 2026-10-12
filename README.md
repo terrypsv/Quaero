@@ -62,6 +62,13 @@ n'ont de sens qu'en groupe. "ligne de commande" devient `cli`, "base de
 données" devient `database` et non "database data", qui ramènerait la moitié
 de GitHub.
 
+Chaque mot revient avec ce qu'il a donné (terme cherché, langage, plancher
+d'étoiles, fenêtre de fraîcheur, mot générique écarté ou mot vide), et
+l'interface réaffiche la phrase telle qu'elle a été tapée, mots compris
+surlignés. Un mot n'est reconnu qu'à partir de son début, "inactif" ne vaut
+pas "actif". Une forme fléchie ne laisse pas de reste, "maintenues" ne fait
+plus chercher "es".
+
 ## Quand rien ne correspond
 
 Une page vide est la pire réponse possible: elle ne distingue pas "ça n'existe
