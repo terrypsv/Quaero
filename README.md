@@ -127,15 +127,18 @@ fois qu'il tourne sur un réseau qui n'est pas le sien.
 
 ### L'interface
 
-Papier, encre, et un vert acide qui surligne ce que Quaero a compris. Après
-une recherche, la phrase revient en grand, telle qu'elle a été tapée. Chaque
-mot compris est surligné et numéroté, et la liste en dessous dit ce que chaque
-numéro est devenu dans la requête. Les mots écartés sont barrés, les mots vides
-grisés. La requête envoyée reste visible, avec ses formulations en mode
-approfondi.
+Papier, encre, et un vert acide qui surligne ce que Quaero a compris. L'écran
+montre une chose à la fois, la question puis les dépôts. Après une recherche,
+la phrase revient telle qu'elle a été tapée, mots compris surlignés, mots
+écartés barrés. Survoler un mot surligné montre ce qu'il est devenu dans la
+requête, et la requête envoyée reste visible en dessous.
 
-La santé d'un dépôt se lit en quatre carrés, pleins pour un projet actif, vides
-pour un projet archivé. La forme suffit, sans la couleur.
+Chaque dépôt tient en trois lignes, nom et santé, description, puis étoiles,
+langage, licence et date du dernier envoi. La santé se lit en quatre carrés,
+pleins pour un projet actif, vides pour un projet archivé, sans avoir besoin
+de la couleur. Les raisons du rang et du verdict se déplient sous chaque
+dépôt, avec de quoi affiner la phrase. Les options de recherche (langues,
+précision) restent repliées sous la barre.
 
 Les polices (JetBrains Mono, Syne, et Archivo pour le logotype) sont embarquées
 dans le binaire, puisque la politique de contenu n'autorise aucune ressource
@@ -143,32 +146,25 @@ extérieure. Elles sont sous licence SIL OFL 1.1, livrées avec leur licence dan
 `internal/webui/fonts/`. `python scripts/polices.py` les récupère, à relancer
 seulement pour en changer.
 
-### Session locale protégée
+### Contrôle de l'hôte
 
 Écouter sur 127.0.0.1 ne suffit pas. Une page web malveillante ouverte dans le
 navigateur peut atteindre ce port par DNS rebinding, en faisant pointer un
-domaine qu'elle contrôle vers 127.0.0.1. Deux verrous indépendants s'y opposent.
+domaine qu'elle contrôle vers 127.0.0.1. L'en-tête `Host` doit donc désigner
+cette machine (`127.0.0.1`, `localhost`, `[::1]`, au bon port), sinon la
+requête est refusée avant tout traitement. Ce contrôle ne demande rien à
+l'utilisateur.
 
-- L'en-tête `Host` doit désigner cette machine (`127.0.0.1`, `localhost`,
-  `[::1]`, au bon port). Une requête rebondie porte le domaine de l'attaquant,
-  elle est refusée avant tout traitement.
-- Chaque lancement tire un jeton de session de 256 bits, qui ne vit qu'en
-  mémoire. Le terminal affiche le lien qui ouvre la session:
+Les réponses portent une politique de contenu stricte (aucune ressource
+extérieure, pas d'intégration dans un cadre) et `Referrer-Policy: no-referrer`.
 
-```
-quaero dev - http://127.0.0.1:7777/?t=<jeton>
-Ce lien ouvre la session. Il ne vaut que pour cette execution, ne le partage pas.
-```
-
-Le jeton passe une fois dans l'adresse, puis vit dans un cookie `HttpOnly` et
-`SameSite=Strict`, et l'adresse est nettoyée. Sans lui, la page comme l'API
-répondent 401, la page avec une explication et rien d'autre (pas même les
-polices). La comparaison se fait en temps constant. Les réponses portent
-une politique de contenu stricte (aucune ressource extérieure, pas d'intégration
-dans un cadre) et `Referrer-Policy: no-referrer`.
+La session par jeton (lien d'ouverture affiché dans le terminal, cookie
+`HttpOnly` `SameSite=Strict`) est retirée le temps du développement de
+l'interface. Elle reviendra avant la première version publiée, et avant
+toute route qui lance un moteur d'analyse.
 
 Écouter sur toutes les interfaces (`-addr 0.0.0.0:7777`) désactive le contrôle
-de `Host`, le jeton reste exigé, et le terminal le signale.
+de `Host`. Plus rien ne protège alors l'interface, et le terminal le signale.
 
 ## Ce que la phrase peut exprimer
 

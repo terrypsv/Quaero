@@ -12,7 +12,9 @@
 - [x] Verdict de santé par dépôt, expliqué
 - [x] Interface web embarquée, filtres par niveau de santé
 - [x] Interface Index, phrase relue et surlignée mot à mot, santé en carrés,
-      polices embarquées sous licence OFL, page d'explication sans session
+      polices embarquées sous licence OFL
+- [x] Interface allégée, une chose à la fois, options et raisons du rang
+      repliées
 - [ ] Validation d'usage réel sur des recherches quotidiennes
 - [ ] Release multi-plateforme
 
@@ -52,9 +54,11 @@ lecture: Quaero analyse, il n'exploite rien.
       manifeste ne passe plus pour un dépôt sain
 - [x] semgrep sans télémétrie (`--metrics=off`, `p/default`), utilisable sous
       Windows via pipx ou uv
-- [x] Session locale protégée: contrôle de `Host` contre le DNS rebinding,
-      jeton de session par lancement, cookie `HttpOnly` `SameSite=Strict`,
-      politique de contenu stricte
+- [x] Contrôle de `Host` contre le DNS rebinding, politique de contenu stricte
+- [ ] Session locale par jeton (lien du terminal, cookie `HttpOnly`
+      `SameSite=Strict`), retirée pendant le développement de l'interface. À
+      remettre avant la première version publiée et avant toute route qui
+      lance un moteur d'analyse (voir PR #29 pour l'implémentation)
 - [x] Identifiant complet des règles semgrep conservé dans les preuves, pour
       des annotations `nosemgrep` précises
 - [ ] Arrêt de tout l'arbre de processus d'un moteur interrompu, avec gestion
