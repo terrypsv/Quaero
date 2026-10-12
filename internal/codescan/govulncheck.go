@@ -259,5 +259,5 @@ func aliasFramework(alias string) string {
 }
 
 func sanitize(s string) string {
-	return strings.NewReplacer("/", "-", ":", "-", " ", "-", ".", "-").Replace(s)
+	return strings.NewReplacer("/", "-", `\`, "-", ":", "-", " ", "-", ".", "-").Replace(s)
 }

@@ -26,6 +26,9 @@ type toolResult struct {
 	stdout   []byte
 	stderr   string
 	exitCode int
+	// root est le dossier analyse: les chemins rendus par le moteur sont
+	// ramenes sous lui (voir relTo).
+	root string
 }
 
 // runTool lance un moteur sans shell et rend ce qu'il a produit. Il ne juge pas
@@ -56,6 +59,7 @@ func runTool(ctx context.Context, bin, dir string, args ...string) (toolResult, 
 		name:   filepath.Base(bin),
 		stdout: stdout.Bytes(),
 		stderr: excerpt(stderr.String()),
+		root:   dir,
 	}
 	if ctxErr := ctx.Err(); ctxErr != nil {
 		return res, ctxErr

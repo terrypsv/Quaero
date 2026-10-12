@@ -25,7 +25,11 @@ import (
 // sur le disque, pas clone depuis GitHub.
 func resolveScanTarget(ctx context.Context, target string) (dir, label string, untrusted bool, cleanup func(), err error) {
 	if info, statErr := os.Stat(target); statErr == nil && info.IsDir() {
-		return target, target, false, func() {}, nil
+		label = target
+		if abs, absErr := filepath.Abs(target); absErr == nil {
+			label = abs
+		}
+		return target, label, false, func() {}, nil
 	}
 	ref, ok := parseRepoRef(target)
 	if !ok {

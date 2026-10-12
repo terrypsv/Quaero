@@ -379,6 +379,11 @@ selon ses propres règles: un moteur en panne, ou osv-scanner qui ne trouve
 aucun manifeste à vérifier, ne ressort jamais comme un dépôt sain. Le résumé
 affiche la durée de chaque moteur.
 
+Les chemins des constats sont ramenés au dépôt (`internal/github/github.go:83`),
+quel que soit l'endroit où il a été cloné. Un même constat garde donc le même
+identifiant d'un scan à l'autre, ce qui permet de comparer deux scans et de
+reconnaître un faux positif déjà trié.
+
 Un faux positif se documente dans le code, à côté de la ligne concernée.
 semgrep ignore les annotations `#nosec` de gosec: il attend
 `// nosemgrep: <identifiant complet de la règle>` sur la ligne précédente.

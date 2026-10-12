@@ -85,6 +85,11 @@ lecture: Quaero analyse, il n'exploite rien.
       puis effacement du clone. Cible nommée à la main, jamais cherchée.
       Environnement des moteurs durci pour du code tiers (GOTOOLCHAIN=local,
       CGO_ENABLED=0, pas de hooks ni de sous-modules)
+- [x] Chemins des constats relatifs au dépôt: un même constat garde le même
+      identifiant d'un scan à l'autre, même sur deux clones
+- [x] Premier audit de Quaero par lui-même: trois candidats triés (G101 sur
+      des noms de variables, urllib limité à https, SRI sur une icône en
+      data: URI), corrigés ou justifiés dans le code
 - [ ] Session locale par jeton (lien du terminal, cookie `HttpOnly`
       `SameSite=Strict`), retirée pendant le développement de l'interface. À
       remettre avant la première version publiée et avant toute route qui

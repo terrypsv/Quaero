@@ -78,10 +78,12 @@ func New() (*Client, error) {
 	}, nil
 }
 
-// Token sources, in the order they are tried.
+// Token sources, in the order they are tried. Ce sont des noms de variables
+// d'environnement, pas des jetons: gosec G101 les prend pour des secrets parce
+// que le mot "TOKEN" y figure.
 const (
-	SourceGitHubToken = "GITHUB_TOKEN"
-	SourceGHToken     = "GH_TOKEN"
+	SourceGitHubToken = "GITHUB_TOKEN" // #nosec G101 -- nom de variable, aucun secret
+	SourceGHToken     = "GH_TOKEN"     // #nosec G101 -- nom de variable, aucun secret
 	SourceFile        = "fichier"
 )
 
