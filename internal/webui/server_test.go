@@ -44,7 +44,7 @@ func (f *fakeSearcher) Search(ctx context.Context, query string, limit, page int
 // bon Host, ils ne portent pas sur le garde lui-meme (voir guard_test.go).
 const testAddr = "127.0.0.1:7777"
 
-func newServer(f *fakeSearcher) http.Handler {
+func newServer(f Searcher) http.Handler {
 	h := (&Server{Client: f, Version: "test", Addr: testAddr}).Handler()
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		r.Host = testAddr
@@ -184,11 +184,11 @@ func TestQuotaIsReported(t *testing.T) {
 }
 
 func TestPaginationIsForwarded(t *testing.T) {
-	f := &fakeSearcher{total: 1}
+	f := &pagedSearcher{total: 1000}
 	rec := httptest.NewRecorder()
-	newServer(f).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, quick("/api/search?q=yaml&page=3"), nil))
+	newServer(f).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, quick("/api/search?q=yaml&upto=3"), nil))
 	if f.lastPage != 3 {
-		t.Errorf("page transmise = %d, want 3", f.lastPage)
+		t.Errorf("derniere page demandee = %d, want 3", f.lastPage)
 	}
 }
 
@@ -208,8 +208,8 @@ func TestUnreachableResultsAreAnnounced(t *testing.T) {
 	if out.Total != 11000 {
 		t.Errorf("total = %d, want 11000", out.Total)
 	}
-	if out.Pages != 20 {
-		t.Errorf("pages = %d, want 20 (1000/50)", out.Pages)
+	if out.Pages != 10 {
+		t.Errorf("pages = %d, want 10 (1000/100)", out.Pages)
 	}
 }
 
@@ -283,7 +283,7 @@ func TestRelaxationOnlyOnFirstPage(t *testing.T) {
 	f := &fakeSearcher{emptyUntil: 99}
 	rec := httptest.NewRecorder()
 	newServer(f).ServeHTTP(rec, httptest.NewRequest(http.MethodGet,
-		quick("/api/search?q=une+lib+go+pour+yaml,+maintenue&page=3"), nil))
+		quick("/api/search?q=une+lib+go+pour+yaml,+maintenue&upto=3"), nil))
 
 	if f.calls != 1 {
 		t.Errorf("appels = %d, aucun desserrage attendu au-dela de la page 1", f.calls)

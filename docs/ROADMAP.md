@@ -39,6 +39,8 @@
 - [x] Lecture de la phrase pendant la frappe, sans dépenser le quota
 - [x] Pied de page pleine largeur, en bas de la fenêtre sur l'accueil, à la
       suite de la liste quand elle est plus longue
+- [x] Cent dépôts par formulation, affichage par 5, 20, 50, 100 ou tous,
+      "charger la suite" avec son coût en requêtes
 - [ ] Validation d'usage réel sur des recherches quotidiennes
 - [ ] Release multi-plateforme
 

@@ -252,6 +252,20 @@ correspondances. Une recherche qui annonce onze mille dépôts n'en rend donc
 accessibles que mille, et l'interface affiche les deux chiffres. Promettre des
 pages qui reviendraient vides serait pire que d'annoncer la limite.
 
+Chaque formulation de la question demande cent dépôts à GitHub, le maximum
+d'une page, pour le prix d'une seule requête. Une recherche approfondie en
+charge donc jusqu'à cinq cents, souvent moins puisque les formulations se
+recoupent. L'interface les affiche par 5, 20, 50 ou 100, ou tous à la fois,
+et passe d'une page à l'autre sans rien redemander. Le choix est gardé dans le
+navigateur.
+
+Au bout de la liste chargée, "charger la suite" demande une page GitHub de
+plus par formulation, et dit combien de requêtes du quota cela coûte. Les
+pages déjà reçues reviennent du cache, le serveur classe le tout, et
+l'interface garde à leur place les dépôts déjà affichés pour ajouter les
+nouveaux à la suite. Une page incomplète est la dernière, Quaero n'en demande
+pas d'autre, et dix pages de cent au plus, la limite de GitHub.
+
 ## Resserrer une liste trop longue
 
 Tant que tout n'est pas chargé, un bloc propose de resserrer la liste avec ce
