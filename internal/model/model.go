@@ -147,7 +147,7 @@ type Result struct {
 	// to be cut off can see it coming.
 	Quota Quota `json:"quota"`
 
-	// Scope is "anglais" or "elargi".
+	// Scope is "anglais", "francais" or "elargi".
 	Scope string `json:"scope"`
 	// Queries lists every query actually sent, so a widened search remains
 	// as inspectable as a simple one.

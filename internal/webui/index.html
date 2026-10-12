@@ -6,21 +6,18 @@
 <title>Quaero</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='28' cy='28' r='19' fill='none' stroke='%23101010' stroke-width='10'/%3E%3Crect x='41' y='41' width='18' height='18' fill='%23C6F432' stroke='%23101010' stroke-width='4'/%3E%3C/svg%3E">
 <style>
-  /* Direction Index: papier, encre, et un vert acide qui surligne ce que
+  /* Direction Index: papier, encre, et un vert acide qui marque ce que
      Quaero a compris. Une seule chose a l'ecran a la fois: la question, puis
      les depots. Le reste (options, raisons d'un rang) se deplie a la demande.
-     Polices embarquees dans le binaire, voir scripts/polices.py. */
+     Archivo pour lire, JetBrains Mono pour ce qui se recopie (requete,
+     chemins). Polices embarquees dans le binaire, voir scripts/polices.py. */
+  @font-face {
+    font-family: "Archivo"; src: url("/fonts/archivo.woff2") format("woff2");
+    font-weight: 400 800; font-stretch: 100% 125%; font-style: normal; font-display: swap;
+  }
   @font-face {
     font-family: "JetBrains Mono"; src: url("/fonts/jetbrains-mono.woff2") format("woff2");
-    font-weight: 400 800; font-style: normal; font-display: swap;
-  }
-  @font-face {
-    font-family: "Syne"; src: url("/fonts/syne.woff2") format("woff2");
-    font-weight: 700 800; font-style: normal; font-display: swap;
-  }
-  @font-face {
-    font-family: "Archivo Quaero"; src: url("/fonts/archivo-quaero.woff2") format("woff2");
-    font-weight: 800; font-stretch: 125%; font-style: normal; font-display: block;
+    font-weight: 400 700; font-style: normal; font-display: swap;
   }
   :root {
     --papier: #F1F1EE;
@@ -30,18 +27,19 @@
     --trait: #CFCFC9;
     --acide: #C6F432;
     --blanc: #FFFFFF;
+    --texte: "Archivo", "Segoe UI", system-ui, -apple-system, sans-serif;
     --mono: "JetBrains Mono", Consolas, "SF Mono", Menlo, "DejaVu Sans Mono", monospace;
-    --titre: "Syne", "Segoe UI", system-ui, -apple-system, sans-serif;
   }
   * { box-sizing: border-box; }
   html { background: var(--papier); }
   body {
     margin: 0; background: var(--papier); color: var(--encre);
-    font: 15px/1.55 var(--mono); -webkit-font-smoothing: antialiased;
+    font: 16px/1.55 var(--texte); -webkit-font-smoothing: antialiased;
+  }
+  code { font-family: var(--mono); font-size: 0.9em;
     /* JetBrains Mono dessine >= en un seul signe: une requete a recopier doit
        montrer les caracteres qu'elle contient. */
-    font-variant-ligatures: none;
-  }
+    font-variant-ligatures: none; }
   a { color: var(--encre); text-underline-offset: 4px; }
   button, select { font: inherit; color: inherit; }
   :focus-visible { outline: 3px solid var(--encre); outline-offset: 2px; }
@@ -50,10 +48,8 @@
 
   .tete { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
   .marque { display: inline-flex; align-items: center; gap: 12px; text-decoration: none; }
-  .mot {
-    font-family: "Archivo Quaero", var(--titre); font-weight: 800; font-stretch: 125%;
-    font-size: 28px; line-height: 1; letter-spacing: -1px;
-  }
+  .mot { font-weight: 800; font-stretch: 125%; font-size: 28px; line-height: 1; letter-spacing: -1px; }
+  .intro { margin: -12px 0 0; max-width: 680px; color: var(--gris); font-size: 17px; text-wrap: pretty; }
   .version { color: var(--pale); font-size: 13px; }
   .cache { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
@@ -62,7 +58,7 @@
   #q {
     flex: 999 1 300px; min-width: 0; min-height: 64px; padding: 0 18px;
     border: 0; border-radius: 0; background: transparent; color: var(--encre);
-    font: 19px var(--mono); font-variant-ligatures: none;
+    font: 19px var(--texte);
   }
   #q:focus-visible { outline: none; box-shadow: inset 0 -5px 0 var(--acide); }
   #q::placeholder { color: var(--pale); }
@@ -92,7 +88,7 @@
     margin-top: 8px; padding: 14px 16px; background: var(--blanc); border: 2px solid var(--encre);
     display: flex; flex-direction: column; gap: 14px; max-width: 520px;
   }
-  .opt { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 4px 12px; align-items: center; }
+  .opt { display: grid; grid-template-columns: 140px minmax(0, 1fr); gap: 4px 12px; align-items: center; }
   .opt .aide { grid-column: 2; color: var(--gris); font-size: 12px; }
 
   .boutons { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -105,15 +101,19 @@
   .choix .n { margin-left: 6px; color: var(--gris); }
   .choix.on .n { color: var(--acide); }
 
-  .lecture { margin: 0; font: 700 clamp(22px, 3.4vw, 30px)/1.3 var(--titre); letter-spacing: -0.01em; overflow-wrap: anywhere; }
-  .lecture mark { background: var(--acide); color: var(--encre); padding: 0 0.1em; cursor: help; -webkit-box-decoration-break: clone; box-decoration-break: clone; }
-  .lecture .vide, .lecture s { color: var(--pale); }
-  .requete { margin: 6px 0 0; color: var(--gris); font-size: 13px; overflow-wrap: anywhere; }
-  .requete code { font: inherit; }
+  .compris { display: flex; flex-direction: column; gap: 10px; }
+  .compris h2 { margin: 0; font-size: 13px; font-weight: 600; color: var(--gris); text-transform: uppercase; letter-spacing: 0.08em; }
+  .puces { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+  .puces li { display: inline-flex; align-items: baseline; gap: 8px; padding: 6px 10px; background: var(--blanc); border: 2px solid var(--encre); }
+  .puces .type { font-size: 13px; color: var(--gris); }
+  .puces b { padding: 0 4px; background: var(--acide); font-weight: 700; }
+  .puces .origine { font-size: 13px; color: var(--gris); }
+  .ignore { margin: 0; font-size: 14px; color: var(--gris); max-width: 760px; }
+  .requete { margin: 0; color: var(--gris); font-size: 13px; overflow-wrap: anywhere; }
 
   .bandeau { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 20px; padding-bottom: 12px; border-bottom: 3px solid var(--encre); }
-  .bandeau h2 { margin: 0; font: 800 28px/1.1 var(--titre); }
-  .bandeau h2 small { margin-left: 10px; font: 400 13px var(--mono); color: var(--gris); }
+  .bandeau h2 { margin: 0; font-size: 30px; line-height: 1.1; font-weight: 800; font-stretch: 112%; letter-spacing: -0.01em; }
+  .bandeau h2 small { margin-left: 10px; font-size: 14px; font-weight: 400; font-stretch: 100%; letter-spacing: 0; color: var(--gris); }
   .tri { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--gris); }
   .tri select { min-height: 36px; padding: 0 8px; border: 2px solid var(--encre); border-radius: 0; background: var(--blanc); color: var(--encre); font-size: 14px; }
   .quota { padding: 2px 10px; background: var(--encre); color: var(--acide); font-size: 13px; }
@@ -134,7 +134,7 @@
   .depot { padding: 18px 0; border-bottom: 1px solid var(--trait); display: flex; flex-direction: column; gap: 6px; }
   .l1 { display: flex; align-items: baseline; gap: 12px; }
   .rang { flex: 0 0 auto; color: var(--pale); font-size: 13px; }
-  .nom { min-width: 0; font-weight: 700; font-size: 17px; overflow-wrap: anywhere; }
+  .nom { min-width: 0; font-weight: 700; font-size: 18px; overflow-wrap: anywhere; }
   .sante { margin-left: auto; flex: 0 0 auto; display: inline-flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 700; cursor: help; }
   .barres { display: inline-flex; gap: 2px; }
   .barres i { width: 8px; height: 8px; border: 1.5px solid var(--encre); }
@@ -143,7 +143,7 @@
     margin: 0; color: var(--gris); overflow-wrap: anywhere;
     display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
   }
-  .meta { display: flex; flex-wrap: wrap; gap: 2px 18px; font-size: 13px; color: var(--gris); }
+  .meta { display: flex; flex-wrap: wrap; gap: 2px 18px; font-size: 14px; color: var(--gris); }
   .meta b { color: var(--encre); font-weight: 500; }
   details.plus summary { min-height: 32px; display: inline-flex; align-items: center; cursor: pointer; font-size: 13px; color: var(--gris); }
   details.plus summary:hover { color: var(--encre); }
@@ -178,11 +178,13 @@
     <span class="version" id="version"></span>
   </header>
 
+  <p class="intro">Décris en français le projet GitHub que tu cherches. Quaero traduit ta phrase en requête, classe les dépôts trouvés et indique pour chacun s'il est encore entretenu.</p>
+
   <section class="question" aria-label="Recherche">
     <div class="barre">
       <label for="q" class="cache">Ce que tu cherches</label>
       <input type="text" id="q" autofocus autocomplete="off" spellcheck="false"
-             placeholder="une bibliothèque go pour parser du yaml, encore maintenue">
+             placeholder="un scanner de ports en go, encore maintenu">
       <button class="go" id="go" type="button">chercher</button>
     </div>
     <div class="sous-barre">
@@ -209,32 +211,33 @@
 // Jeu large, pioche au hasard a chaque chargement et sur demande: montrer
 // toujours les memes exemples n'apprend rien apres la premiere fois.
 var ALL_EXAMPLES = [
-  "une bibliothèque rust pour parser du json, très populaire",
-  "un outil go de scan réseau encore maintenu",
-  "client python pour elasticsearch, au moins 500 étoiles",
-  "framework typescript de tests end to end, récent",
-  "outil de chiffrement en ligne de commande",
-  "une lib go pour générer des pdf",
-  "serveur mqtt léger en rust",
-  "bibliothèque python de séries temporelles, maintenue",
-  "moteur de recherche plein texte embarqué",
-  "un outil de migration de base de données en go",
-  "parser de logs en rust, performant",
-  "client kubernetes en typescript",
-  "un générateur de site statique récent",
-  "bibliothèque de graphes en python, populaire",
-  "un proxy inverse en go, au moins 1000 étoiles",
-  "lib de compression rapide en c",
-  "framework web minimaliste en rust",
-  "outil de capture réseau en ligne de commande",
-  "un client ldap en go",
-  "bibliothèque de crypto post-quantique",
-  "un outil de fuzzing récent",
-  "client s3 alternatif en go, maintenu",
-  "bibliothèque de parsing yaml en rust",
-  "outil de gestion de secrets en ligne de commande",
-  "lib de validation de schéma json en python",
-  "un émulateur de terminal en rust"
+  // Exemples tires de la securite, le domaine de travail de Quaero. Le test
+  // TestExemplesLisibles verifie que chacun donne au moins un mot-cle, sans
+  // mot coupe ni laisse de cote.
+  "scanner de ports en go",
+  "détection d'intrusion réseau, maintenue",
+  "analyse de logiciels malveillants en python",
+  "forensique de la mémoire sous windows",
+  "fuzzer pour rust, récent",
+  "gestionnaire de mots de passe en ligne de commande",
+  "audit de sécurité kubernetes",
+  "détection de secrets dans le code",
+  "scanner de vulnérabilités web",
+  "pot de miel ssh",
+  "capture de paquets en rust",
+  "renseignement sur les menaces, au moins 500 étoiles",
+  "rétro-ingénierie de micrologiciel",
+  "osint sur les noms de domaine",
+  "pare-feu applicatif web",
+  "analyse statique de code en python",
+  "élévation de privilèges sous linux",
+  "radio logicielle et wifi",
+  "réponse aux incidents windows",
+  "durcissement linux, populaire",
+  "énumération active directory",
+  "règles yara",
+  "décompilateur java",
+  "nomenclature logicielle en go"
 ];
 
 // Les libelles disent ce que le niveau veut dire pour qui choisit une
@@ -261,9 +264,12 @@ var SORTS = [
   ["sante",      "les plus fiables"]
 ];
 
+// La langue des depots, pas celle de la phrase: la phrase est toujours tapee
+// en francais.
 var SCOPES = [
-  ["anglais", "anglais", "Une requête, termes traduits en anglais."],
-  ["elargi",  "toutes langues", "Cherche aussi en chinois, japonais, russe, espagnol et portugais. Coûte 5 requêtes."]
+  ["anglais", "anglais", "Ta phrase est traduite en anglais, la langue de la plupart des dépôts. Réglage conseillé."],
+  ["francais", "français", "Cherche les mots tels que tu les as tapés, pour trouver les projets décrits en français."],
+  ["elargi", "toutes langues", "Ajoute des recherches avec le mot principal en français, chinois, japonais, coréen, russe ou espagnol, selon le mot. Jusqu'à 6 requêtes de plus."]
 ];
 
 var PRECISIONS = [
@@ -277,19 +283,36 @@ var SCRIPT_LABEL = {
   devanagari: "devanagari", thai: "thaï", indetermine: "sans description"
 };
 
-// Ce que chaque role de la lecture mot a mot (model.Segment) a envoye dans la
-// requete. Seuls ces roles sont surlignes.
-function qualifier(s, query) {
-  var m;
+// Ce que chaque role de la lecture mot a mot (model.Segment) a donne, dit en
+// francais: le type de critere, puis sa valeur.
+function months(days) {
+  var d = parseInt(days, 10);
+  if (d % 30 === 0) return (d / 30) + " mois";
+  return d + " jours";
+}
+
+function facet(s) {
   switch (s.role) {
-    case "terme":    return s.value;
-    case "langage":  return "language:" + s.value;
-    case "etoiles":  return "stars:>=" + s.value;
-    case "recence":  m = /pushed:>=(\S+)/.exec(query || ""); return m ? "pushed:>=" + m[1] : "récent";
-    case "forks":    return "forks gardés";
-    case "archives": return "archivés gardés";
+    case "terme":    return ["mot-clé", s.value];
+    case "langage":  return ["langage", s.value];
+    case "etoiles":  return ["popularité", "au moins " + fmt(parseInt(s.value, 10)) + " étoiles"];
+    case "recence":  return ["mis à jour", "depuis moins de " + months(s.value)];
+    case "forks":    return ["forks", "inclus"];
+    case "archives": return ["archivés", "inclus"];
   }
-  return "";
+  return null;
+}
+
+// plain retire casse et accents, pour savoir si un mot a ete traduit ou
+// seulement mis en minuscules.
+function plain(s) {
+  return String(s).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+}
+
+function quoteList(words) {
+  var q = words.map(function (w) { return "« " + w + " »"; });
+  if (q.length < 2) return q.join("");
+  return q.slice(0, -1).join(", ") + " et " + q[q.length - 1];
 }
 
 var state = {
@@ -351,7 +374,7 @@ function renderSuggestions() {
 // Les options touchent la requete elle-meme: elles restent pres de la barre de
 // recherche, repliees tant qu'on n'en a pas besoin.
 function renderOptions() {
-  var h = opt("langues", "data-scope", SCOPES, state.scope)
+  var h = opt("langue des dépôts", "data-scope", SCOPES, state.scope)
         + opt("précision", "data-precision", PRECISIONS, state.precision);
   $("panneau").innerHTML = h;
   bind("#panneau [data-scope]", function (b) { setOption({ scope: b.getAttribute("data-scope") }); });
@@ -432,24 +455,36 @@ function run(opts) {
     .then(function () { $("go").disabled = false; });
 }
 
-// La phrase revient telle qu'elle a ete tapee, mots compris surlignes. Survoler
-// un mot surligne montre ce qu'il est devenu dans la requete.
+// Ce que Quaero a compris, critere par critere, puis les mots qu'il a laisses
+// de cote et pourquoi. La phrase elle-meme reste dans la barre de recherche.
 function renderReadback(data) {
   var it = data.intent || {};
-  var query = data.query || "";
-  var head = "";
+  var chips = "", generic = [], cut = [];
   (it.reading || []).forEach(function (s) {
-    var t = esc(s.text);
-    var q = qualifier(s, query);
-    if (q) { head += '<mark title="' + esc(q) + '">' + t + "</mark>"; return; }
-    if (s.role === "generique" || s.role === "limite") { head += "<s>" + t + "</s>"; return; }
-    if (s.role === "vide") { head += '<span class="vide">' + t + "</span>"; return; }
-    head += t;
+    var f = facet(s);
+    if (f) {
+      var origin = s.role === "terme" && plain(s.text) !== plain(s.value).replace(/"/g, "")
+        ? '<span class="origine">' + esc(s.text) + "</span>" : "";
+      chips += '<li><span class="type">' + esc(f[0]) + "</span><b>" + esc(f[1]) + "</b>" + origin + "</li>";
+      return;
+    }
+    if (s.role === "generique") generic.push(s.text);
+    if (s.role === "limite") cut.push(s.text);
   });
+
   var h = "";
-  if (head) h += '<p class="lecture" aria-label="Phrase lue">' + head + "</p>";
-  if (query) h += '<p class="requete">requête envoyée <code>' + esc(query) + "</code></p>";
-  $("readback").innerHTML = h;
+  if (chips) h += '<h2>Ce que Quaero a compris</h2><ul class="puces">' + chips + "</ul>";
+  if (generic.length) {
+    h += '<p class="ignore">' + esc(quoteList(generic)) + (generic.length > 1
+      ? " ne sont pas cherchés, ce sont des mots trop généraux que les dépôts n'écrivent pas dans leur description."
+      : " n'est pas cherché, c'est un mot trop général que les dépôts n'écrivent pas dans leur description.") + "</p>";
+  }
+  if (cut.length) {
+    h += '<p class="ignore">' + esc(quoteList(cut)) + (cut.length > 1 ? " ne sont pas cherchés" : " n'est pas cherché")
+       + ", Quaero garde les quatre premiers mots-clés pour ne pas vider les résultats.</p>";
+  }
+  if (data.query) h += '<p class="requete">requête envoyée à GitHub <code>' + esc(data.query) + "</code></p>";
+  $("readback").innerHTML = h ? '<section class="compris" aria-label="Ce que Quaero a compris">' + h + "</section>" : "";
 }
 
 function render() {

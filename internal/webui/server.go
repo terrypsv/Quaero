@@ -39,8 +39,10 @@ var fontFiles embed.FS
 // Search scopes. English-only is the default because widening costs one API
 // call per language variant, and making that automatic would quietly multiply
 // everyone's quota consumption.
+// French searches the words as typed, for projects described in French.
 const (
 	scopeEnglish = "anglais"
+	scopeFrench  = "francais"
 	scopeWide    = "elargi"
 )
 
@@ -146,7 +148,7 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 	}
 
 	scope := r.URL.Query().Get("scope")
-	if scope != scopeWide {
+	if scope != scopeWide && scope != scopeFrench {
 		scope = scopeEnglish
 	}
 
@@ -157,6 +159,9 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 
 	started := time.Now()
 	in := intent.Read(phrase)
+	if scope == scopeFrench {
+		in = intent.French(in)
+	}
 	query := intent.Query(in)
 
 	ctx, cancel := context.WithTimeout(r.Context(), 40*time.Second)
@@ -221,7 +226,9 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 		for _, r := range repos {
 			seen[r.FullName] = true
 		}
-		for _, alt := range intent.Widen(in, 5) {
+		// Six variantes au plus: le francais d'abord, puis les communautes les
+		// plus presentes sur GitHub.
+		for _, alt := range intent.Widen(in, 6) {
 			altRepos, altTotal, altRate, altErr := s.Client.Search(ctx, alt, limit, 1)
 			rate = altRate
 			if altErr != nil {

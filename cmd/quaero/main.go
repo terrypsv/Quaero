@@ -9,6 +9,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"time"
@@ -24,6 +25,7 @@ var version = "dev"
 
 func main() {
 	addr := flag.String("addr", "127.0.0.1:7777", "adresse d'ecoute")
+	noBrowser := flag.Bool("no-browser", false, "ne pas ouvrir l'interface dans le navigateur au lancement")
 	showVersion := flag.Bool("version", false, "afficher la version et quitter")
 	saveToken := flag.String("save-token", "", "enregistrer un jeton GitHub et quitter")
 	forget := flag.Bool("forget-token", false, "oublier le jeton enregistre et quitter")
@@ -96,11 +98,26 @@ func main() {
 	// The default address is loopback on purpose: the process carries a GitHub
 	// token, and a tool bound to every interface by default is a tool that
 	// leaks that token the first time it runs on an untrusted network.
-	fmt.Printf("quaero %s - %s\n", version, webui.URL(*addr))
+	// L'ecoute est ouverte avant le navigateur: la page doit repondre des que
+	// l'onglet s'affiche, et un port deja pris doit se dire avant.
+	listener, err := net.Listen("tcp", *addr)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "erreur: ecoute sur %s impossible: %v\n", *addr, err)
+		fmt.Fprintln(os.Stderr, "Quaero tourne peut-etre deja. Ouvrir l'adresse dans le navigateur, ou choisir un autre port avec -addr.")
+		os.Exit(2)
+	}
+	url := webui.URL(*addr)
+	fmt.Printf("quaero %s - %s\n", version, url)
 	if webui.ListensEverywhere(*addr) {
 		fmt.Fprintln(os.Stderr, "attention: ecoute sur toutes les interfaces, sans aucune protection. Toute machine du reseau peut utiliser l'interface et le jeton GitHub qu'elle porte.")
 	}
-	if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+	if !*noBrowser {
+		if err := openBrowser(url); err != nil {
+			fmt.Fprintf(os.Stderr, "navigateur non ouvert (%v), ouvrir l'adresse a la main.\n", err)
+		}
+	}
+	fmt.Println("Ctrl+C pour arreter.")
+	if err := httpServer.Serve(listener); err != nil && err != http.ErrServerClosed {
 		log.Fatalf("serveur: %v", err)
 	}
 }

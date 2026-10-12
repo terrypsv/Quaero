@@ -73,3 +73,17 @@ func TestHasVariants(t *testing.T) {
 		t.Error("aucun terme connu ne doit rien signaler")
 	}
 }
+
+// Le francais vient en premier: c'est la langue de qui tape la phrase, et les
+// projets decrits en francais sont ceux qu'il lit le mieux.
+func TestWidenCommenceParLeFrancais(t *testing.T) {
+	in := model.Intent{Terms: []string{"encryption"}}
+	got := Widen(in, 6)
+	if len(got) == 0 || !strings.HasPrefix(got[0], "chiffrement") {
+		t.Fatalf("premiere variante = %v, attendu chiffrement", got)
+	}
+	in = model.Intent{Terms: []string{"vulnerability"}}
+	if got := Widen(in, 1); len(got) != 1 || !strings.HasPrefix(got[0], "vulnérabilité") {
+		t.Errorf("vocabulaire cyber sans variante francaise: %v", got)
+	}
+}

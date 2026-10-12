@@ -77,7 +77,9 @@ func Strategies(in model.Intent, deep bool) []Strategy {
 	// Topics are curated by maintainers rather than extracted from prose, so
 	// a topic match is an explicit statement of what the project is for.
 	for _, term := range in.Terms {
-		if len(term) < 3 {
+		// Un sujet GitHub est un seul mot: une expression entre guillemets ne
+		// peut pas en etre un.
+		if len(term) < 3 || strings.ContainsAny(term, "\" ") {
 			continue
 		}
 		topical := in
@@ -97,7 +99,9 @@ func Strategies(in model.Intent, deep bool) []Strategy {
 	// AND of scattered words into a demand for the words together, which is
 	// what someone means by "a yaml parser" and not "yaml, and separately,
 	// parsing".
-	if len(in.Terms) > 1 {
+	// Deja entre guillemets (recherche en francais), une expression ne peut pas
+	// etre reprise dans une autre sans casser la requete.
+	if len(in.Terms) > 1 && !strings.Contains(terms, `"`) {
 		quoted := in
 		quoted.Terms = []string{`"` + terms + `"`}
 		out = append(out, Strategy{

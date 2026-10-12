@@ -62,12 +62,25 @@ n'ont de sens qu'en groupe. "ligne de commande" devient `cli`, "base de
 données" devient `database` et non "database data", qui ramènerait la moitié
 de GitHub.
 
-Chaque mot revient avec ce qu'il a donné (terme cherché, langage, plancher
-d'étoiles, fenêtre de fraîcheur, mot générique écarté ou mot vide), et
-l'interface réaffiche la phrase telle qu'elle a été tapée, mots compris
-surlignés. Un mot n'est reconnu qu'à partir de son début, "inactif" ne vaut
-pas "actif". Une forme fléchie ne laisse pas de reste, "maintenues" ne fait
-plus chercher "es".
+Le vocabulaire de la sécurité est le mieux couvert, puisque c'est le domaine
+de travail de Quaero. "scanner de ports" devient `port-scanner`, "détection
+d'intrusion" devient `ids`, "pot de miel" devient `honeypot`, "rétro-ingénierie"
+devient `reverse-engineering`. Une expression connue passe avant les mots de
+fraîcheur qu'elle contient, "active directory" est un produit et pas une
+demande de projets actifs.
+
+Chaque mot revient avec ce qu'il a donné (mot-clé, langage, popularité,
+fraîcheur, mot générique laissé de côté). L'interface affiche ce que Quaero a
+compris, critère par critère, avec le mot d'origine quand il a été traduit, et
+dit pourquoi un mot n'est pas cherché. Un mot n'est reconnu qu'à partir de son
+début, "inactif" ne vaut pas "actif". Une forme fléchie ne laisse pas de reste,
+"maintenues" ne fait plus chercher "es".
+
+La langue des dépôts se choisit dans les options. **anglais** traduit la
+phrase, c'est le réglage conseillé. **français** cherche les mots tels qu'ils
+ont été tapés, pour trouver les projets décrits en français. **toutes langues**
+ajoute des recherches avec le mot principal en français, chinois, japonais,
+coréen, russe ou espagnol, selon le mot.
 
 ## Quand rien ne correspond
 
@@ -120,27 +133,31 @@ pour le fichier).
 Le quota restant est affiché à chaque recherche, pour qu'une coupure imminente
 se voie venir plutôt que de surprendre.
 
-L'interface est sur `http://127.0.0.1:7777`. L'écoute est sur la boucle locale
-par défaut, parce que le processus porte un jeton: un outil exposé sur toutes
-les interfaces par défaut est un outil qui laisse fuir ce jeton la première
-fois qu'il tourne sur un réseau qui n'est pas le sien.
+L'interface s'ouvre seule dans le navigateur par défaut, sur
+`http://127.0.0.1:7777`. `-no-browser` laisse le navigateur fermé, l'adresse
+reste affichée dans le terminal. L'écoute est sur la boucle locale par défaut,
+parce que le processus porte un jeton: un outil exposé sur toutes les
+interfaces par défaut est un outil qui laisse fuir ce jeton la première fois
+qu'il tourne sur un réseau qui n'est pas le sien.
 
 ### L'interface
 
-Papier, encre, et un vert acide qui surligne ce que Quaero a compris. L'écran
-montre une chose à la fois, la question puis les dépôts. Après une recherche,
-la phrase revient telle qu'elle a été tapée, mots compris surlignés, mots
-écartés barrés. Survoler un mot surligné montre ce qu'il est devenu dans la
-requête, et la requête envoyée reste visible en dessous.
+Papier, encre, et un vert acide qui marque ce que Quaero a compris. Une phrase
+en tête de page dit ce qu'est l'outil. L'écran montre ensuite une chose à la
+fois, la question puis les dépôts. Après une recherche, chaque critère compris
+s'affiche avec sa valeur (mot-clé, langage, popularité, fraîcheur), les mots
+laissés de côté sont expliqués, et la requête envoyée reste visible.
 
 Chaque dépôt tient en trois lignes, nom et santé, description, puis étoiles,
 langage, licence et date du dernier envoi. La santé se lit en quatre carrés,
 pleins pour un projet actif, vides pour un projet archivé, sans avoir besoin
 de la couleur. Les raisons du rang et du verdict se déplient sous chaque
-dépôt, avec de quoi affiner la phrase. Les options de recherche (langues,
-précision) restent repliées sous la barre.
+dépôt, avec de quoi affiner la phrase. Les options de recherche (langue des
+dépôts, précision) restent repliées sous la barre. Les exemples proposés viennent
+tous de la sécurité, et un test vérifie que chacun se lit sans mot perdu.
 
-Les polices (JetBrains Mono, Syne, et Archivo pour le logotype) sont embarquées
+Les polices (Archivo pour le texte, les titres et le logotype, JetBrains Mono
+pour ce qui se recopie) sont embarquées
 dans le binaire, puisque la politique de contenu n'autorise aucune ressource
 extérieure. Elles sont sous licence SIL OFL 1.1, livrées avec leur licence dans
 `internal/webui/fonts/`. `python scripts/polices.py` les récupère, à relancer

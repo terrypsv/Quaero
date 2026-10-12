@@ -63,14 +63,14 @@ func Rate(r model.Repo) model.Health {
 
 	if r.Archived {
 		h.Level = LevelArchived
-		h.Notes = append(h.Notes, "depot archive par son proprietaire, il ne recevra plus de correctif")
+		h.Notes = append(h.Notes, "dépôt archivé par son propriétaire, il ne recevra plus de correctif")
 		return h
 	}
 
 	if r.PushedAt.IsZero() {
 		h.Level = LevelDormant
 		h.DaysSincePush = -1
-		h.Notes = append(h.Notes, "date de dernier envoi inconnue, l'activite ne peut pas etre evaluee")
+		h.Notes = append(h.Notes, "date du dernier envoi inconnue, l'activité ne peut pas être évaluée")
 		return h
 	}
 
@@ -83,30 +83,30 @@ func Rate(r model.Repo) model.Health {
 		h.Notes = append(h.Notes, fmt.Sprintf("dernier envoi il y a %s", humanDays(days)))
 	case days <= 365:
 		h.Level = LevelCalm
-		h.Notes = append(h.Notes, fmt.Sprintf("dernier envoi il y a %s, ce qui peut etre normal pour une bibliotheque finie", humanDays(days)))
+		h.Notes = append(h.Notes, fmt.Sprintf("dernier envoi il y a %s, normal pour une bibliothèque terminée", humanDays(days)))
 	case days <= 730:
 		h.Level = LevelDormant
 		h.Notes = append(h.Notes, fmt.Sprintf("aucun envoi depuis %s", humanDays(days)))
 	default:
 		h.Level = LevelAbandoned
-		h.Notes = append(h.Notes, fmt.Sprintf("aucun envoi depuis %s, considerer le projet comme arrete", humanDays(days)))
+		h.Notes = append(h.Notes, fmt.Sprintf("aucun envoi depuis %s, à considérer comme arrêté", humanDays(days)))
 	}
 
 	// A high open-issue ratio on a popular project usually means maintenance
 	// stopped keeping up with use, which is a dependency risk even when the
 	// code still works.
 	if r.Stars >= 100 && h.IssueRatio > 20 {
-		h.Notes = append(h.Notes, fmt.Sprintf("%.0f issues ouvertes pour cent etoiles, la maintenance ne suit pas l'usage", h.IssueRatio))
+		h.Notes = append(h.Notes, fmt.Sprintf("%.0f issues ouvertes pour cent étoiles, la maintenance ne suit pas l'usage", h.IssueRatio))
 		if h.Level == LevelHealthy {
 			h.Level = LevelCalm
 		}
 	}
 
 	if r.Fork {
-		h.Notes = append(h.Notes, "ce depot est un fork, verifier s'il diverge reellement de l'original")
+		h.Notes = append(h.Notes, "c'est un fork, vérifier s'il s'éloigne vraiment de l'original")
 	}
 	if r.License == "" || r.License == "NOASSERTION" {
-		h.Notes = append(h.Notes, "licence absente ou non identifiee, l'usage n'est pas juridiquement clair")
+		h.Notes = append(h.Notes, "licence absente ou non identifiée, l'usage n'est pas clair juridiquement")
 	}
 
 	return h
@@ -155,53 +155,55 @@ func Score(repos []model.Repo, in model.Intent, mode string) []model.Repo {
 		desc := strings.ToLower(r.Description)
 		topics := lowered(r.Topics)
 
-		matchedName, matchedDesc, matchedTopic := 0, 0, 0
+		// Les termes trouves, et pas seulement leur nombre: "yaml dans le nom"
+		// explique un rang, "1 terme dans le nom" oblige a deviner lequel.
+		var inName, inDesc, inTopic []string
 		for _, t := range terms {
 			switch {
 			case name == t:
 				r.Score += 12
-				matchedName++
+				inName = append(inName, t)
 			case strings.Contains(name, t):
 				r.Score += 6
-				matchedName++
+				inName = append(inName, t)
 			case strings.Contains(full, t):
 				r.Score += 3
-				matchedName++
+				inName = append(inName, t)
 			}
 			if strings.Contains(desc, t) {
 				r.Score += 2
-				matchedDesc++
+				inDesc = append(inDesc, t)
 			}
 			for _, topic := range topics {
 				if topic == t {
 					r.Score += 4
-					matchedTopic++
+					inTopic = append(inTopic, t)
 					break
 				}
 			}
 		}
 
-		if matchedName > 0 {
-			r.Why = append(r.Why, fmt.Sprintf("%d terme(s) dans le nom", matchedName))
+		if len(inName) > 0 {
+			r.Why = append(r.Why, quoted(inName)+" dans le nom")
 		}
-		if matchedTopic > 0 {
-			r.Why = append(r.Why, fmt.Sprintf("%d terme(s) dans les sujets", matchedTopic))
+		if len(inTopic) > 0 {
+			r.Why = append(r.Why, quoted(inTopic)+" dans les sujets")
 		}
-		if matchedDesc > 0 {
-			r.Why = append(r.Why, fmt.Sprintf("%d terme(s) dans la description", matchedDesc))
+		if len(inDesc) > 0 {
+			r.Why = append(r.Why, quoted(inDesc)+" dans la description")
 		}
 
 		// Covering every term matters more than matching one of them many
 		// times: a result that answers the whole question beats one that
 		// answers a fragment loudly.
-		if len(terms) > 1 && matchedName+matchedTopic >= len(terms) {
+		if len(terms) > 1 && len(inName)+len(inTopic) >= len(terms) {
 			r.Score += 8
-			r.Why = append(r.Why, "couvre tous les termes demandes")
+			r.Why = append(r.Why, "tous les mots cherchés y sont")
 		}
 
 		if in.Language != "" && strings.EqualFold(r.Language, in.Language) {
 			r.Score += 5
-			r.Why = append(r.Why, "langage demande")
+			r.Why = append(r.Why, "écrit en "+r.Language+", comme demandé")
 		}
 
 		// Popularity is a tiebreaker, not a driver. Logarithmic so that a
@@ -217,7 +219,7 @@ func Score(repos []model.Repo, in model.Intent, mode string) []model.Repo {
 			// small project is plausibly a deliberate, focused answer.
 			if r.Stars >= 20 && r.Stars <= 2000 {
 				r.Score += 8
-				r.Why = append(r.Why, "projet cible plutot que generaliste")
+				r.Why = append(r.Why, "petit projet ciblé plutôt que généraliste")
 			} else if r.Stars > 2000 {
 				r.Score -= math.Log10(float64(r.Stars)) * 3
 			}
@@ -234,18 +236,16 @@ func Score(repos []model.Repo, in model.Intent, mode string) []model.Repo {
 		if r.Agreement > 0 {
 			r.Score += r.Agreement * 2
 			if len(r.FoundBy) > 1 {
-				r.Why = append(r.Why, "trouve par "+strconv.Itoa(len(r.FoundBy))+" recherches differentes")
-			} else if len(r.FoundBy) == 1 {
-				r.Why = append(r.Why, "trouve par: "+r.FoundBy[0])
+				r.Why = append(r.Why, "trouvé par "+strconv.Itoa(len(r.FoundBy))+" formulations différentes de la question")
 			}
 		}
 
 		r.Score += healthBonus(r.Health)
 		if r.Health.Level == LevelHealthy {
-			r.Why = append(r.Why, "maintenu recemment")
+			r.Why = append(r.Why, "entretenu récemment")
 		}
 		if r.Health.Level == LevelAbandoned || r.Health.Level == LevelArchived {
-			r.Why = append(r.Why, "penalise: projet arrete")
+			r.Why = append(r.Why, "reculé parce que le projet est arrêté")
 		}
 	}
 
@@ -315,7 +315,7 @@ func healthBonus(h model.Health) float64 {
 func humanDays(days int) string {
 	switch {
 	case days < 0:
-		return "une duree inconnue"
+		return "une durée inconnue"
 	case days == 0:
 		return "moins d'un jour"
 	case days == 1:
@@ -338,4 +338,13 @@ func lowered(in []string) []string {
 		}
 	}
 	return out
+}
+
+// quoted cite les termes entre guillemets francais, separes par des virgules.
+func quoted(terms []string) string {
+	parts := make([]string, len(terms))
+	for i, t := range terms {
+		parts[i] = "« " + t + " »"
+	}
+	return strings.Join(parts, ", ")
 }
