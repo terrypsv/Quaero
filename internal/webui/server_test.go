@@ -40,16 +40,25 @@ func (f *fakeSearcher) Search(ctx context.Context, query string, limit, page int
 	return f.repos, f.total, f.rate, f.err
 }
 
-// testAddr est l'adresse d'ecoute des tests. Les tests de recherche posent le
-// bon Host, ils ne portent pas sur le garde lui-meme (voir guard_test.go).
-const testAddr = "127.0.0.1:7777"
+// testAddr et testToken sont l'adresse d'ecoute et le jeton de session des
+// tests. Les tests de recherche posent le bon Host et une session ouverte, ils
+// ne portent pas sur le garde lui-meme (voir guard_test.go).
+const (
+	testAddr  = "127.0.0.1:7777"
+	testToken = "jeton-de-session-de-test"
+)
 
-func newServer(f Searcher) http.Handler {
-	h := (&Server{Client: f, Version: "test", Addr: testAddr}).Handler()
+// withSession sert h comme le ferait un navigateur dont la session est ouverte.
+func withSession(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		r.Host = testAddr
+		r.AddCookie(&http.Cookie{Name: sessionCookie, Value: testToken})
 		h.ServeHTTP(w, r)
 	})
+}
+
+func newServer(f Searcher) http.Handler {
+	return withSession((&Server{Client: f, Version: "test", Addr: testAddr, Token: testToken}).Handler())
 }
 
 // quick appends the parameter that keeps a test to a single API call, so that

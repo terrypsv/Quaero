@@ -88,8 +88,8 @@ func main() {
 	client, err := github.New()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "erreur: %v\n\n", err)
-		fmt.Fprintln(os.Stderr, "Sans jeton, l'API GitHub limite a 60 requetes par heure, ce qu'une")
-		fmt.Fprintln(os.Stderr, "seule session de recherche epuise. Creer un jeton personnel sans")
+		fmt.Fprintln(os.Stderr, "Sans jeton, la recherche GitHub est limitee a 10 requetes par minute,")
+		fmt.Fprintln(os.Stderr, "deux recherches approfondies. Creer un jeton personnel sans")
 		fmt.Fprintln(os.Stderr, "aucune permission (la recherche publique n'en demande pas), puis:")
 		fmt.Fprintln(os.Stderr, "")
 		fmt.Fprintln(os.Stderr, "  quaero -save-token <jeton>     l'enregistrer une fois pour toutes")
@@ -99,7 +99,13 @@ func main() {
 		fmt.Fprintln(os.Stderr, "  bash       : export GITHUB_TOKEN=...")
 		os.Exit(2)
 	}
-	server := &webui.Server{Client: client, Version: version, Addr: *addr}
+	// Le jeton de session ne vit qu'en memoire, le temps de cette execution.
+	session, err := webui.NewToken()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "erreur: jeton de session impossible a tirer: %v\n", err)
+		os.Exit(2)
+	}
+	server := &webui.Server{Client: client, Version: version, Addr: *addr, Token: session}
 	httpServer := &http.Server{
 		Addr:              *addr,
 		Handler:           server.Handler(),
@@ -116,15 +122,17 @@ func main() {
 		fmt.Fprintln(os.Stderr, "Quaero tourne peut-etre deja. Ouvrir l'adresse dans le navigateur, ou choisir un autre port avec -addr.")
 		os.Exit(2)
 	}
-	url := webui.URL(*addr)
-	fmt.Printf("quaero %s - %s\n", version, url)
+	// Le navigateur s'ouvre sur le lien de session: le jeton y passe une fois,
+	// devient un cookie, puis disparait de la barre d'adresse.
+	url := webui.SessionURL(*addr, session)
+	fmt.Printf("quaero %s - %s\n", version, webui.URL(*addr))
 	if webui.ListensEverywhere(*addr) {
-		fmt.Fprintln(os.Stderr, "attention: ecoute sur toutes les interfaces, sans aucune protection. Toute machine du reseau peut utiliser l'interface et le jeton GitHub qu'elle porte.")
+		fmt.Fprintln(os.Stderr, "attention: ecoute sur toutes les interfaces. Le controle de l'hote ne s'applique plus, seul le jeton de session protege l'interface.")
 	}
-	if !*noBrowser {
-		if err := openBrowser(url); err != nil {
-			fmt.Fprintf(os.Stderr, "navigateur non ouvert (%v), ouvrir l'adresse a la main.\n", err)
-		}
+	if *noBrowser {
+		fmt.Printf("Ouvrir la session: %s\n", url)
+	} else if err := openBrowser(url); err != nil {
+		fmt.Fprintf(os.Stderr, "navigateur non ouvert (%v). Ouvrir la session: %s\n", err, url)
 	}
 	fmt.Println("Ctrl+C pour arreter.")
 	if err := httpServer.Serve(listener); err != nil && err != http.ErrServerClosed {

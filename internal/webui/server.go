@@ -81,6 +81,9 @@ type Server struct {
 	Version string
 	// Addr est l'adresse d'ecoute, d'ou derivent les en-tetes Host acceptes.
 	Addr string
+	// Token est le jeton de session de cette execution (voir guard.go). Vide,
+	// l'interface refuse tout.
+	Token string
 
 	cache *searchCache
 }
@@ -106,7 +109,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/quota", s.handleQuota)
 	mux.HandleFunc("/api/version", s.handleVersion)
 	mux.HandleFunc("/fonts/", s.handleFont)
-	return guard{allowed: allowedHosts(s.Addr), next: mux}
+	return guard{token: s.Token, allowed: allowedHosts(s.Addr), next: mux}
 }
 
 func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {

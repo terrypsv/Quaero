@@ -73,7 +73,7 @@ func TestCSPAutoriseLesPolicesLocales(t *testing.T) {
 // toute facon, mais une page qui en depend s'afficherait cassee.
 func TestPagesSansRessourceExterieure(t *testing.T) {
 	externe := regexp.MustCompile(`(?i)(src|href)\s*=\s*["']?https?:|url\(\s*["']?https?:|@import`)
-	for name, page := range map[string][]byte{"index.html": indexHTML} {
+	for name, page := range map[string][]byte{"index.html": indexHTML, "session.html": sessionHTML} {
 		if loc := externe.FindIndex(page); loc != nil {
 			t.Errorf("%s charge une ressource exterieure: %q", name, page[loc[0]:loc[1]+20])
 		}

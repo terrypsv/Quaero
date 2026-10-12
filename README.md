@@ -149,8 +149,8 @@ revenir à une page ou retirer un critère ne coûte donc aucune requête, le
 classement se faisant dans Quaero et non chez GitHub.
 
 L'interface s'ouvre seule dans le navigateur par défaut, sur
-`http://127.0.0.1:7777`. `-no-browser` laisse le navigateur fermé, l'adresse
-reste affichée dans le terminal. L'écoute est sur la boucle locale par défaut,
+`http://127.0.0.1:7777`, session ouverte. `-no-browser` laisse le navigateur
+fermé et affiche le lien de session dans le terminal. L'écoute est sur la boucle locale par défaut,
 parce que le processus porte un jeton: un outil exposé sur toutes les
 interfaces par défaut est un outil qui laisse fuir ce jeton la première fois
 qu'il tourne sur un réseau qui n'est pas le sien.
@@ -179,7 +179,7 @@ ressource extérieure. Elles sont sous licence SIL OFL 1.1, livrées avec leur l
 `internal/webui/fonts/`. `python scripts/polices.py` les récupère, à relancer
 seulement pour en changer.
 
-### Contrôle de l'hôte
+### Session et contrôle de l'hôte
 
 Écouter sur 127.0.0.1 ne suffit pas. Une page web malveillante ouverte dans le
 navigateur peut atteindre ce port par DNS rebinding, en faisant pointer un
@@ -191,13 +191,18 @@ l'utilisateur.
 Les réponses portent une politique de contenu stricte (aucune ressource
 extérieure, pas d'intégration dans un cadre) et `Referrer-Policy: no-referrer`.
 
-La session par jeton (lien d'ouverture affiché dans le terminal, cookie
-`HttpOnly` `SameSite=Strict`) est retirée le temps du développement de
-l'interface. Elle reviendra avant la première version publiée, et avant
-toute route qui lance un moteur d'analyse.
+Chaque requête doit aussi porter le jeton de session, tiré au hasard à chaque
+lancement et gardé en mémoire seulement. Quaero ouvre lui-même le navigateur
+sur le lien qui le porte: le jeton passe une fois dans l'adresse, devient un
+cookie `HttpOnly` `SameSite=Strict`, puis disparaît de la barre d'adresse. Le
+navigateur n'envoie ce cookie ni à une autre origine ni depuis un autre site,
+si bien qu'une page ouverte ailleurs ne peut ni lire l'interface ni lui faire
+lancer quoi que ce soit. Sans session, rien n'est servi, pas même les polices.
+Avec `-no-browser`, le lien de session s'affiche dans le terminal. Après un
+redémarrage, l'ancien onglet n'a plus le bon jeton: Quaero en ouvre un nouveau.
 
 Écouter sur toutes les interfaces (`-addr 0.0.0.0:7777`) désactive le contrôle
-de `Host`. Plus rien ne protège alors l'interface, et le terminal le signale.
+de `Host`. Seul le jeton protège alors l'interface, et le terminal le signale.
 
 ## Ce que la phrase peut exprimer
 

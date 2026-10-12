@@ -93,10 +93,9 @@ lecture: Quaero analyse, il n'exploite rien.
 - [x] `-advisory`: brouillon de signalement privé (forme GitHub Security
       Advisory) à partir d'un constat, commit analysé noté dans le rapport,
       liste de contrôle avant envoi, rien n'est envoyé par l'outil
-- [ ] Session locale par jeton (lien du terminal, cookie `HttpOnly`
-      `SameSite=Strict`), retirée pendant le développement de l'interface. À
-      remettre avant la première version publiée et avant toute route qui
-      lance un moteur d'analyse (voir PR #29 pour l'implémentation)
+- [x] Session locale par jeton remise (cookie `HttpOnly` `SameSite=Strict`,
+      jeton tiré à chaque lancement), ouverte par le navigateur que Quaero
+      lance lui-même: plus aucun lien à copier
 - [x] Identifiant complet des règles semgrep conservé dans les preuves, pour
       des annotations `nosemgrep` précises
 - [ ] Arrêt de tout l'arbre de processus d'un moteur interrompu, avec gestion
