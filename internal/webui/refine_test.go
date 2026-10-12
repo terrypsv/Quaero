@@ -143,11 +143,7 @@ func quotaOfServer(t *testing.T, h http.Handler) model.Quota {
 // Le quota s'affiche des l'ouverture, avant toute recherche.
 func TestQuotaLuAuChargement(t *testing.T) {
 	q := &quotaSearcher{quota: github.RateLimit{Remaining: 25, Limit: 30, ResetAt: time.Now().Add(42 * time.Second)}}
-	h := (&Server{Client: q, Version: "test", Addr: testAddr}).Handler()
-	got := quotaOfServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		r.Host = testAddr
-		h.ServeHTTP(w, r)
-	}))
+	got := quotaOfServer(t, newServer(q))
 	if q.asked != 1 {
 		t.Errorf("quota demande %d fois", q.asked)
 	}

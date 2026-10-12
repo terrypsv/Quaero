@@ -4,25 +4,54 @@
 package webui
 
 import (
+	"crypto/rand"
+	"crypto/subtle"
+	_ "embed" // page de session embarquee
+	"encoding/hex"
 	"net"
 	"net/http"
 	"strings"
 )
 
-// Le garde protege l'interface locale contre le DNS rebinding, sans rien
-// demander a celui qui l'utilise.
+// Le garde protege l'interface locale par deux verrous independants.
 //
 // Ecouter sur 127.0.0.1 ne suffit pas. Une page web malveillante ouverte dans le
-// navigateur peut atteindre ce port en faisant pointer un domaine qu'elle
-// controle vers 127.0.0.1: son code parle alors au serveur local comme s'il
-// etait chez elle. Une telle requete porte le domaine de l'attaquant dans son
-// en-tete Host, elle est refusee avant tout traitement.
+// navigateur peut atteindre ce port par DNS rebinding: elle fait pointer un
+// domaine qu'elle controle vers 127.0.0.1, et son code parle alors au serveur
+// local comme s'il etait chez elle.
 //
-// La session par jeton (lien du terminal, cookie HttpOnly) est retiree pour
-// l'instant et reviendra avant la premiere version publiee, voir ROADMAP.
+// L'en-tete Host doit designer cette machine. Une requete rebondie porte le
+// domaine de l'attaquant, elle est refusee avant tout traitement.
+//
+// Chaque requete doit porter le jeton de session, tire au hasard a chaque
+// lancement. Quaero ouvre lui-meme le navigateur sur le lien qui le porte, le
+// jeton passe une fois dans l'adresse puis vit dans un cookie HttpOnly et
+// SameSite=Strict, que le navigateur n'envoie ni a une autre origine ni depuis
+// un autre site. Une page d'un autre site ne peut donc ni lire l'interface ni
+// lui faire lancer quoi que ce soit, y compris un scan.
+
+const (
+	// sessionCookie porte le jeton une fois la session ouverte.
+	sessionCookie = "quaero_session"
+	// tokenParam porte le jeton dans le lien d'ouverture.
+	tokenParam = "t"
+)
+
+//go:embed session.html
+var sessionHTML []byte
+
+// NewToken tire un jeton de session de 256 bits. Il ne vit qu'en memoire, le
+// temps d'une execution: rien n'est ecrit sur le disque.
+func NewToken() (string, error) {
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(b), nil
+}
 
 // ListensEverywhere dit si addr ecoute sur toutes les interfaces, auquel cas le
-// controle de Host n'a plus de sens et plus rien ne protege l'interface.
+// controle de Host n'a plus de sens et seul le jeton protege l'interface.
 func ListensEverywhere(addr string) bool {
 	host, _, err := net.SplitHostPort(addr)
 	return err == nil && isWildcard(host)
@@ -32,7 +61,7 @@ func isWildcard(host string) bool {
 	return host == "" || host == "0.0.0.0" || host == "::"
 }
 
-// URL rend l'adresse a ouvrir dans le navigateur. Une ecoute sur toutes les
+// URL rend l'adresse de l'interface, sans jeton. Une ecoute sur toutes les
 // interfaces s'ouvre depuis cette machine par 127.0.0.1.
 func URL(addr string) string {
 	host, port, err := net.SplitHostPort(addr)
@@ -45,9 +74,15 @@ func URL(addr string) string {
 	return "http://" + net.JoinHostPort(host, port) + "/"
 }
 
+// SessionURL rend le lien qui ouvre la session: l'adresse de l'interface et le
+// jeton de cette execution.
+func SessionURL(addr, token string) string {
+	return URL(addr) + "?" + tokenParam + "=" + token
+}
+
 // allowedHosts liste les valeurs de Host acceptees pour addr. nil signifie
-// "pas de controle" (ecoute sur toutes les interfaces). Une adresse illisible
-// n'autorise rien: on ferme plutot que d'ouvrir.
+// "pas de controle" (ecoute sur toutes les interfaces, le jeton reste exige).
+// Une adresse illisible n'autorise rien: on ferme plutot que d'ouvrir.
 func allowedHosts(addr string) map[string]bool {
 	host, port, err := net.SplitHostPort(addr)
 	if err != nil {
@@ -77,19 +112,74 @@ func allowedHosts(addr string) map[string]bool {
 	return set
 }
 
-// guard controle l'hote avant de passer la main.
+// guard applique les deux verrous avant de passer la main.
 type guard struct {
+	token   string
 	allowed map[string]bool
 	next    http.Handler
 }
 
 func (g guard) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	setSecurityHeaders(w)
+
+	// Sans jeton configure, rien ne passe: un oubli au demarrage ne doit pas
+	// ouvrir l'interface a tout le monde.
+	if g.token == "" {
+		http.Error(w, "session non initialisee", http.StatusInternalServerError)
+		return
+	}
 	if g.allowed != nil && !g.allowed[strings.ToLower(r.Host)] {
 		http.Error(w, "hote refuse", http.StatusForbidden)
 		return
 	}
+
+	// Ouverture: le jeton arrive dans l'adresse, il est echange contre le
+	// cookie puis retire de l'adresse. La redirection va toujours a la racine,
+	// jamais vers un chemin fourni par la requete.
+	if t := r.URL.Query().Get(tokenParam); t != "" {
+		if !sameToken(t, g.token) {
+			deny(w, r)
+			return
+		}
+		http.SetCookie(w, &http.Cookie{
+			Name:     sessionCookie,
+			Value:    g.token,
+			Path:     "/",
+			HttpOnly: true,
+			SameSite: http.SameSiteStrictMode,
+		})
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+		return
+	}
+
+	c, err := r.Cookie(sessionCookie)
+	if err != nil || !sameToken(c.Value, g.token) {
+		deny(w, r)
+		return
+	}
 	g.next.ServeHTTP(w, r)
+}
+
+// sameToken compare en temps constant, pour ne rien laisser deviner du jeton a
+// qui mesurerait les temps de reponse.
+func sameToken(got, want string) bool {
+	return want != "" && subtle.ConstantTimeCompare([]byte(got), []byte(want)) == 1
+}
+
+// deny refuse une requete sans session valide, en JSON pour l'API et avec une
+// page qui dit quoi faire pour le reste, sans rien dire du jeton attendu.
+func deny(w http.ResponseWriter, r *http.Request) {
+	if strings.HasPrefix(r.URL.Path, "/api/") {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "session non reconnue, relancer Quaero"})
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	w.WriteHeader(http.StatusUnauthorized)
+	// Page embarquee dans le binaire (go:embed), sans donnee venue de la
+	// requete: il n'y a rien a echapper.
+	// nosemgrep: go.lang.security.audit.xss.no-direct-write-to-responsewriter.no-direct-write-to-responsewriter
+	_, _ = w.Write(sessionHTML)
 }
 
 // setSecurityHeaders pose les en-tetes de defense en profondeur. La page ne
