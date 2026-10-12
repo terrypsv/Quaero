@@ -308,6 +308,12 @@
       <span class="jauge" id="quota-jauge" aria-hidden="true"></span>
       <span class="q-sous" id="quota-sous"></span>
     </div>
+    <!-- Dans l'onglet audit, la limite d'analyse prend la place du quota. -->
+    <div class="quota" id="limite" role="status" hidden>
+      <span class="q-lib">analyses possibles</span>
+      <span class="q-n" id="limite-n"></span>
+      <span class="q-sous" id="limite-sous"></span>
+    </div>
   </header>
 
   <nav class="onglets" role="tablist" aria-label="Mode">
@@ -1268,6 +1274,8 @@ function showTab(name) {
   // Le quota ne concerne que la recherche: l'analyse clone sans passer par
   // l'API de recherche.
   $("quota").classList.toggle("ailleurs", onAudit);
+  audit.onTab = onAudit;
+  drawLimit();
   $("note-pied").textContent = FOOT_NOTES[onAudit ? "audit" : "recherche"];
   try { history.replaceState(null, "", onAudit ? "#auditer" : location.pathname + location.search); } catch (e) { /* sans effet */ }
 }
@@ -1281,8 +1289,25 @@ var STAGE_LABEL = { clone: "clone de", analyse: "analyse de", annulation: "annul
 
 var audit = {
   available: true, job: null, notice: null, timer: null, misses: 0, drafts: {},
+  limits: null, onTab: false,
   filter: { sev: "toutes", kind: "tout" }
 };
+
+// Ce qui fait echouer un clone, dit en une ligne. Un cas inconnu garde le
+// message du serveur.
+var CLONE_ERRORS = {
+  git_absent: function () { return "git est introuvable. Installe-le, ou analyse un dossier déjà cloné."; },
+  prive: function (r) { return "« " + r + " » n'existe pas ou est privé. Un dépôt privé demande un jeton qui peut le lire."; },
+  jeton_sans_acces: function (r) { return "Ton jeton n'a pas accès à « " + r + " ». Donne-lui la lecture de ce dépôt, ou analyse son dossier."; },
+  introuvable: function (r) { return "« " + r + " » n'existe pas, ou ton jeton ne le voit pas."; },
+  jeton_refuse: function () { return "GitHub refuse ton jeton, expiré ou révoqué. Remplace-le avec quaero -save-token."; },
+  reseau: function () { return "github.com ne répond pas. Vérifie ta connexion."; }
+};
+
+function failureText(job) {
+  var f = CLONE_ERRORS[job.error_code];
+  return f ? f(job.repo) : (job.error || "analyse impossible");
+}
 
 // Ce que le serveur refuse, dit avec des mots.
 var TARGET_ERRORS = {
@@ -1319,6 +1344,7 @@ function loadScan() {
     }
     audit.misses = 0;
     audit.available = d.available !== false;
+    if (d.limits) audit.limits = d.limits;
     setJob(d.job || null);
   }).catch(retryScan);
 }
@@ -1343,6 +1369,24 @@ function setJob(job) {
   clearTimeout(audit.timer);
   if (job && job.running) audit.timer = setTimeout(loadScan, 1000);
   renderAudit();
+}
+
+// drawLimit montre ce que l'audit permet, a la place du quota: une analyse a
+// la fois, un delai par moteur, et rien de pris sur le quota GitHub.
+function drawLimit() {
+  var box = $("limite"), lim = audit.limits;
+  if (!lim || !audit.onTab || !audit.available) { box.hidden = true; return; }
+  var busy = !!(audit.job && audit.job.running);
+  var free = Math.max(0, (lim.concurrent || 1) - (busy ? 1 : 0));
+  var minutes = lim.engine_timeout_s ? Math.round(lim.engine_timeout_s / 60) : 0;
+  box.hidden = false;
+  box.classList.toggle("bas", busy);
+  $("limite-n").innerHTML = free + "<small> / " + (lim.concurrent || 1) + "</small>";
+  $("limite-sous").textContent = busy ? "une analyse en cours"
+    : "une à la fois" + (minutes ? ", " + minutes + " min max par moteur" : "");
+  box.title = "Quaero lance une analyse à la fois. "
+    + (minutes ? "Chaque moteur a " + minutes + " minutes au plus, au-delà il est arrêté et le rapport le dit. " : "")
+    + "L'audit ne prend rien sur le quota de recherche GitHub, le clone passe par git.";
 }
 
 function setNotice(title, text) {
@@ -1465,6 +1509,7 @@ function findingItem(f, job) {
 
 function renderAudit() {
   var job = audit.job, h = "";
+  drawLimit();
   $("temoin").hidden = !(job && job.running);
   $("analyser").disabled = !audit.available || !!(job && job.running);
   if (!audit.available) {
@@ -1482,7 +1527,7 @@ function renderAudit() {
   } else if (job && job.state === "annule") {
     h += '<p class="rien">Analyse de ' + esc(job.repo) + " annulée.</p>";
   } else if (job) {
-    h += '<p class="erreur"><b>échec</b>' + esc(job.error || "analyse impossible") + "</p>";
+    h += '<p class="erreur"><b>échec</b>' + esc(failureText(job)) + "</p>";
   }
   // Un avis ou une relecture ne referme pas les details deja ouverts.
   var open = {}, items = document.querySelectorAll("#audit [data-id]"), i;

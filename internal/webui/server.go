@@ -87,6 +87,9 @@ type Server struct {
 	// Scan analyse un depot depuis l'onglet audit (voir scan.go). Nil, l'onglet
 	// dit que l'analyse n'est pas disponible.
 	Scan ScanFunc
+	// ScanTimeout est le delai accorde a chaque moteur d'une analyse, affiche
+	// dans l'onglet audit. Zero, la page ne l'affiche pas.
+	ScanTimeout time.Duration
 
 	cache *searchCache
 	scans *scanJobs

@@ -505,6 +505,11 @@ Lancer reste un geste à part.
   un appel au code fautif, la ligne le dit.
 - Deux filtres, gravité et type (code, dépendances), réduisent la liste sans
   relancer l'analyse.
+- À la place du quota de recherche, un encart dit ce que l'audit permet. Une
+  analyse à la fois, 15 minutes au plus par moteur. L'audit ne prend rien sur
+  le quota de l'API GitHub, le clone passe par git.
+- Un échec se dit en une ligne, selon le cas. Dépôt privé ou inexistant, jeton
+  sans accès au dépôt, jeton refusé, github.com injoignable ou git absent.
 - « préparer le signalement » ouvre le brouillon d'un constat sous celui-ci,
   le même que `-advisory`, à copier ou à enregistrer en `.md`, avec le lien
   du formulaire de signalement privé du dépôt sur GitHub. Ce formulaire

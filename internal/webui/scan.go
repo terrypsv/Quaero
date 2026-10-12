@@ -147,6 +147,7 @@ type scanJob struct {
 	started   time.Time
 	ended     time.Time
 	err       string
+	errCode   string
 	report    *finding.Report
 	cancel    context.CancelFunc
 	done      chan struct{}
@@ -179,6 +180,8 @@ type scanView struct {
 	Running bool    `json:"running"`
 	Elapsed float64 `json:"elapsed_s"`
 	Error   string  `json:"error,omitempty"`
+	// ErrorCode nomme le cas d'echec, pour que la page le dise avec ses mots.
+	ErrorCode string `json:"error_code,omitempty"`
 	// Result n'est rendu qu'une fois l'analyse finie.
 	Result *finding.Report `json:"report,omitempty"`
 	// Reportable liste les constats qui peuvent devenir un signalement: ceux
@@ -193,13 +196,14 @@ func (j *scanJob) view(now time.Time) scanView {
 		end = j.ended
 	}
 	v := scanView{
-		ID:      j.id,
-		Repo:    j.target.Label(),
-		Local:   j.target.Local(),
-		State:   j.state,
-		Running: j.running(),
-		Elapsed: math.Round(end.Sub(j.started).Seconds()*10) / 10,
-		Error:   j.err,
+		ID:        j.id,
+		Repo:      j.target.Label(),
+		Local:     j.target.Local(),
+		State:     j.state,
+		Running:   j.running(),
+		Elapsed:   math.Round(end.Sub(j.started).Seconds()*10) / 10,
+		Error:     j.err,
+		ErrorCode: j.errCode,
 	}
 	if !j.target.Local() {
 		v.URL = j.target.Repo.URL()
@@ -275,6 +279,10 @@ func (s *scanJobs) finish(job *scanJob, rep *finding.Report, err, ctxErr error) 
 	case err != nil:
 		job.state = stateFailed
 		job.err = err.Error()
+		var coded interface{ Code() string }
+		if errors.As(err, &coded) {
+			job.errCode = coded.Code()
+		}
 	case rep == nil:
 		job.state = stateFailed
 		job.err = "analyse sans rapport"
@@ -352,6 +360,17 @@ func (s *Server) StopScan(timeout time.Duration) (stopped, finished bool) {
 	}
 }
 
+// scanLimits dit ce que l'audit permet, pour que la page l'affiche comme elle
+// affiche le quota de recherche: une analyse a la fois, un delai par moteur.
+// Le clone passe par git, il ne touche pas au quota de l'API GitHub.
+func (s *Server) scanLimits() map[string]any {
+	limits := map[string]any{"concurrent": 1}
+	if s.ScanTimeout > 0 {
+		limits["engine_timeout_s"] = int(s.ScanTimeout.Seconds())
+	}
+	return limits
+}
+
 // maxFormBytes borne le corps des requetes qui lancent ou annulent: une
 // reference de depot tient en quelques dizaines d'octets.
 const maxFormBytes = 4 << 10
@@ -360,7 +379,7 @@ const maxFormBytes = 4 << 10
 func (s *Server) handleScan(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet, http.MethodHead:
-		writeJSON(w, http.StatusOK, map[string]any{"available": s.Scan != nil, "job": s.scans.current()})
+		writeJSON(w, http.StatusOK, map[string]any{"available": s.Scan != nil, "job": s.scans.current(), "limits": s.scanLimits()})
 	case http.MethodPost:
 		if s.Scan == nil {
 			writeJSON(w, http.StatusNotImplemented, map[string]string{"error": "analyse indisponible dans cette execution"})

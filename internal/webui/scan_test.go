@@ -432,3 +432,41 @@ func TestAnalyseSansSession(t *testing.T) {
 		t.Errorf("code = %d, %d analyse(s)", rec.Code, f.count())
 	}
 }
+
+type codedErr struct{ code string }
+
+func (e codedErr) Error() string { return "echec " + e.code }
+func (e codedErr) Code() string  { return e.code }
+
+// Un echec code garde son code jusqu'a la page, qui le dit avec ses mots.
+func TestEchecCode(t *testing.T) {
+	f := newFakeScan()
+	f.err = codedErr{"jeton_sans_acces"}
+	s, h := scanServer(f.scan)
+	post(h, "/api/scan", url.Values{"cible": {"a/b"}}, ourOrigin)
+	close(f.release)
+	wait(t, s)
+	got := decode(t, get(h, "/api/scan")).Job
+	if got.State != stateFailed || got.ErrorCode != "jeton_sans_acces" || got.Error != "echec jeton_sans_acces" {
+		t.Errorf("echec: %+v", got)
+	}
+}
+
+// La page recoit les limites de l'audit, comme elle recoit le quota.
+func TestLimitesDAnalyse(t *testing.T) {
+	s := &Server{Client: &fakeSearcher{}, Version: "test", Addr: testAddr, Token: testToken,
+		Scan: newFakeScan().scan, ScanTimeout: 15 * time.Minute}
+	rec := get(withSession(s.Handler()), "/api/scan")
+	var out struct {
+		Limits struct {
+			Concurrent int `json:"concurrent"`
+			Timeout    int `json:"engine_timeout_s"`
+		} `json:"limits"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	if out.Limits.Concurrent != 1 || out.Limits.Timeout != 900 {
+		t.Errorf("limites %+v", out.Limits)
+	}
+}

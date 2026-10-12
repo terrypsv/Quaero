@@ -1,8 +1,6 @@
-<img width="1568" height="392" alt="preview" src="https://github.com/user-attachments/assets/3038c606-f656-4cd4-802c-40a57c45e856" />
-
-
-
-
+<p align="center">
+  <img src="assets/quaero.png" alt="Quaero. Trouver un dépôt, savoir s'il tient, auditer son code." width="100%">
+</p>
 
 Quaero aide à choisir du code open source et à le rendre plus sûr. Tu décris
 ce que tu cherches avec tes mots, il trouve les dépôts GitHub qui
@@ -89,4 +87,5 @@ outils d'analyse et la protection de l'interface. La
 
 ## Licence
 
-Logiciel propriétaire, tous droits réservés, voir [LICENSE](LICENSE).
+Logiciel propriétaire, tous droits réservés, voir [LICENSE](LICENSE). Quaero
+fait partie de la suite Steelveil.
