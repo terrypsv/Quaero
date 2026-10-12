@@ -90,5 +90,4 @@ outils d'analyse et la protection de l'interface. La
 
 ## Licence
 
-Logiciel propriétaire, tous droits réservés, voir [LICENSE](LICENSE). Quaero
-fait partie de la suite Steelveil.
+Logiciel propriétaire, tous droits réservés, voir [LICENSE](LICENSE).
