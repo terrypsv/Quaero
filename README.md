@@ -1,4 +1,5 @@
-<img width="485" height="184" alt="ascii-art-text" src="https://github.com/user-attachments/assets/f68fb629-efe8-459d-889e-611113698594" />
+<img width="3200" height="800" alt="quaero-clair" src="https://github.com/user-attachments/assets/b8ff716f-83bc-4223-802a-07970d2f8915" />
+
 
 
 # Quaero
