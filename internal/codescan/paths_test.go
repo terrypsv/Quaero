@@ -39,8 +39,12 @@ func TestRelTo(t *testing.T) {
 // La racine peut etre ecrite autrement par le moteur (nom court Windows,
 // /private/var sous macOS): le nom du dossier temporaire suffit a couper.
 func TestRelToRacineEcriteAutrement(t *testing.T) {
-	root := filepath.Join(string(filepath.Separator)+"var", "folders", "quaero-scan-777")
-	p := filepath.Join(string(filepath.Separator)+"private", "var", "folders", "quaero-scan-777", "internal", "a.go")
+	// Les deux chemins partent d'un dossier absolu sur tous les systemes. Un
+	// chemin comme \var\... sans lettre de lecteur n'est pas absolu sous
+	// Windows, et ne ressemble pas a ce que rend un moteur.
+	base := t.TempDir()
+	root := filepath.Join(base, "var", "folders", "quaero-scan-777")
+	p := filepath.Join(base, "private", "var", "folders", "quaero-scan-777", "internal", "a.go")
 	if got := relTo(root, p); got != "internal/a.go" {
 		t.Errorf("relTo = %q, attendu internal/a.go", got)
 	}
