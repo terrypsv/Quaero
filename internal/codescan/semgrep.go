@@ -78,7 +78,7 @@ func interpretSemgrep(res toolResult) ([]finding.Finding, error) {
 	if err := res.accept(0, 1); err != nil {
 		return nil, err
 	}
-	return parseSemgrep(res.stdout)
+	return parseSemgrepAt(res.stdout, res.root)
 }
 
 // --- Schema de la sortie semgrep --json ---
@@ -112,7 +112,10 @@ type semgrepMetadata struct {
 	References []string        `json:"references"`
 }
 
-func parseSemgrep(raw []byte) ([]finding.Finding, error) {
+func parseSemgrep(raw []byte) ([]finding.Finding, error) { return parseSemgrepAt(raw, "") }
+
+// parseSemgrepAt lit la sortie de semgrep en ramenant chaque chemin sous root.
+func parseSemgrepAt(raw []byte, root string) ([]finding.Finding, error) {
 	trimmed := bytes.TrimSpace(raw)
 	if len(trimmed) == 0 {
 		return nil, nil
@@ -124,6 +127,7 @@ func parseSemgrep(raw []byte) ([]finding.Finding, error) {
 
 	var out []finding.Finding
 	for _, r := range rep.Results {
+		r.Path = relTo(root, r.Path)
 		out = append(out, projectSemgrep(r))
 	}
 	return out, nil

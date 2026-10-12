@@ -16,6 +16,34 @@ import (
 	"github.com/terrypsv/Quaero/internal/codescan"
 )
 
+// resolveScanTarget transforme ce qui est passe a -scan en un dossier a
+// analyser. Un dossier deja present sur le disque est analyse tel quel, en
+// confiance. Sinon, une reference de depot GitHub est clonee dans un
+// temporaire, analysee en mode non fiable, puis effacee.
+//
+// Un dossier local l'emporte sur une reference: "mon/projet" existant est lu
+// sur le disque, pas clone depuis GitHub.
+func resolveScanTarget(ctx context.Context, target string) (dir, label string, untrusted bool, cleanup func(), err error) {
+	if info, statErr := os.Stat(target); statErr == nil && info.IsDir() {
+		label = target
+		if abs, absErr := filepath.Abs(target); absErr == nil {
+			label = abs
+		}
+		return target, label, false, func() {}, nil
+	}
+	ref, ok := parseRepoRef(target)
+	if !ok {
+		return "", "", false, func() {}, fmt.Errorf(
+			"%q n'est ni un dossier local ni une reference de depot GitHub (owner/repo ou une URL github.com)", target)
+	}
+	fmt.Fprintf(os.Stderr, "clone de %s...\n", ref)
+	dir, cleanup, err = cloneRepo(ctx, ref)
+	if err != nil {
+		return "", "", false, func() {}, err
+	}
+	return dir, "github.com/" + ref.String(), true, cleanup, nil
+}
+
 // selectScanners choisit les moteurs selon ce que contient le depot. Semgrep et
 // osv-scanner couvrent la plupart des langages et se declenchent partout; les
 // moteurs specifiques a Go ne s'ajoutent que si un go.mod est present, pour ne
@@ -41,11 +69,25 @@ func selectScanners(dir string) []codescan.Scanner {
 // Rappel porte par l'outil lui-meme: les constats sortent en "review", jamais
 // confirmes. Confirmer une faille et la divulguer de facon coordonnee reste un
 // acte humain, hors de l'outil.
-func runScan(dir, jsonPath string, timeout time.Duration) (int, error) {
-	opt := codescan.Options{Timeout: timeout}
-	rep, err := codescan.RunWith(context.Background(), dir, version, opt, selectScanners(dir)...)
+func runScan(target, jsonPath string, timeout time.Duration) (int, error) {
+	ctx := context.Background()
+	dir, label, untrusted, cleanup, err := resolveScanTarget(ctx, target)
 	if err != nil {
 		return 2, err
+	}
+	defer cleanup()
+
+	opt := codescan.Options{Timeout: timeout, Untrusted: untrusted}
+	rep, err := codescan.RunWith(ctx, dir, version, opt, selectScanners(dir)...)
+	if err != nil {
+		return 2, err
+	}
+	// Le rapport nomme la cible par son depot, pas par le dossier temporaire du
+	// clone, qui ne dit rien a personne.
+	rep.Run.Context["cible"] = label
+	fmt.Printf("Analyse de %s\n", label)
+	if untrusted {
+		fmt.Println("Depot tiers: environnement des moteurs durci. Pour du code douteux, scanner dans une machine jetable.")
 	}
 
 	fail, review := 0, 0

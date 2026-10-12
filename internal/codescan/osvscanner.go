@@ -66,7 +66,7 @@ func interpretOSV(res toolResult) ([]finding.Finding, error) {
 	if err := res.accept(0, 1); err != nil {
 		return nil, err
 	}
-	return parseOSV(res.stdout)
+	return parseOSVAt(res.stdout, res.root)
 }
 
 // --- Schema de la sortie osv-scanner --format json ---
@@ -108,7 +108,10 @@ type osvReference struct {
 	URL  string `json:"url"`
 }
 
-func parseOSV(raw []byte) ([]finding.Finding, error) {
+func parseOSV(raw []byte) ([]finding.Finding, error) { return parseOSVAt(raw, "") }
+
+// parseOSVAt lit la sortie d'osv-scanner en ramenant chaque manifeste sous root.
+func parseOSVAt(raw []byte, root string) ([]finding.Finding, error) {
 	trimmed := bytes.TrimSpace(raw)
 	if len(trimmed) == 0 {
 		return nil, nil
@@ -120,6 +123,7 @@ func parseOSV(raw []byte) ([]finding.Finding, error) {
 
 	var out []finding.Finding
 	for _, res := range rep.Results {
+		res.Source.Path = relTo(root, res.Source.Path)
 		for _, pkg := range res.Packages {
 			for _, v := range pkg.Vulnerabilities {
 				out = append(out, projectOSV(res.Source, pkg.Package, v))

@@ -50,7 +50,13 @@ WOFF2 = re.compile(r"url\((https://[^)]+)\)\s*format\(['\"]woff2['\"]\)")
 
 
 def get(url):
+    # urllib ouvre aussi file:// et ftp://. Les adresses viennent de constantes
+    # ou de la feuille CSS de Google (filtree en https par WOFF2), mais la
+    # fonction ne doit pas compter sur ses appelants: rien d'autre que https.
+    if urllib.parse.urlsplit(url).scheme != "https":
+        raise SystemExit(f"adresse refusee, https uniquement: {url}")
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+    # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected
     with urllib.request.urlopen(req, timeout=30) as resp:
         return resp.read()
 

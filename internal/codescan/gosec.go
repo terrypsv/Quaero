@@ -58,7 +58,7 @@ func interpretGosec(res toolResult) ([]finding.Finding, error) {
 	if err := res.accept(0, 1); err != nil {
 		return nil, err
 	}
-	return parseGosec(res.stdout)
+	return parseGosecAt(res.stdout, res.root)
 }
 
 // --- Schema de la sortie gosec -fmt=json ---
@@ -84,7 +84,10 @@ type gosecCWE struct {
 	URL string `json:"url"`
 }
 
-func parseGosec(raw []byte) ([]finding.Finding, error) {
+func parseGosec(raw []byte) ([]finding.Finding, error) { return parseGosecAt(raw, "") }
+
+// parseGosecAt lit la sortie de gosec en ramenant chaque chemin sous root.
+func parseGosecAt(raw []byte, root string) ([]finding.Finding, error) {
 	trimmed := bytes.TrimSpace(raw)
 	if len(trimmed) == 0 {
 		// Pas de sortie: aucune issue. Ce n'est pas une erreur.
@@ -97,6 +100,7 @@ func parseGosec(raw []byte) ([]finding.Finding, error) {
 
 	var out []finding.Finding
 	for _, iss := range rep.Issues {
+		iss.File = relTo(root, iss.File)
 		out = append(out, projectGosec(iss))
 	}
 	return out, nil

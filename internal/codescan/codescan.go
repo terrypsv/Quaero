@@ -57,6 +57,10 @@ const DefaultTimeout = 15 * time.Minute
 type Options struct {
 	// Timeout borne chaque moteur. Zero ou negatif vaut DefaultTimeout.
 	Timeout time.Duration
+	// Untrusted durcit l'environnement des moteurs pour un depot dont on n'a
+	// pas la maitrise (un clone tiers): pas de changement de chaine d'outils,
+	// pas de cgo, pas d'invite. Voir sandbox.go. Un scan local reste normal.
+	Untrusted bool
 }
 
 // Run lance les analyseurs avec les options par defaut. Voir RunWith.
@@ -91,13 +95,18 @@ func RunWith(ctx context.Context, dir, version string, opt Options, scanners ...
 		timeout = DefaultTimeout
 	}
 
+	if opt.Untrusted {
+		ctx = withScanEnv(ctx, hardenedEnv())
+	}
+
 	host, _ := os.Hostname()
 	rep := finding.NewReport(
 		finding.Tool{Name: "quaero", Version: version},
 		host,
 		map[string]any{
-			"mode": "codescan",
-			"path": abs,
+			"mode":       "codescan",
+			"path":       abs,
+			"non_fiable": opt.Untrusted,
 		},
 	)
 

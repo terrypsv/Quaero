@@ -32,7 +32,7 @@ func main() {
 	auditQuery := flag.String("audit", "", "auditer la sante des depots correspondant a cette requete, puis quitter")
 	auditJSON := flag.String("audit-json", "", "avec -audit: ecrire le rapport au schema partage dans ce fichier")
 	auditLimit := flag.Int("audit-limit", 30, "avec -audit: nombre de depots a evaluer")
-	scanPath := flag.String("scan", "", "analyser le code d'un depot local a ce chemin, puis quitter")
+	scanPath := flag.String("scan", "", "analyser le code d'un depot, puis quitter: un chemin local, ou un depot github (owner/repo ou URL github.com) a cloner")
 	scanJSON := flag.String("scan-json", "", "avec -scan: ecrire le rapport au schema partage dans ce fichier")
 	scanTimeout := flag.Duration("scan-timeout", codescan.DefaultTimeout, "avec -scan: duree maximale accordee a chaque moteur (ex. 5m, 30m)")
 	flag.Parse()
