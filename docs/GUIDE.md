@@ -190,8 +190,10 @@ l'utilisateur.
 Les réponses portent une politique de contenu stricte (aucune ressource
 extérieure, pas d'intégration dans un cadre) et `Referrer-Policy: no-referrer`.
 
-Chaque requête doit aussi porter le jeton de session, tiré au hasard à chaque
-lancement et gardé en mémoire seulement. Quaero ouvre lui-même le navigateur
+Chaque requête doit aussi porter le jeton de session, tiré au hasard au premier
+lancement puis gardé dans `~/.quaero/session`, lisible par toi seul. Sous
+Linux et macOS, un fichier lisible par d'autres n'est pas repris, un jeton neuf
+le remplace. L'effacer en tire un neuf au lancement suivant. Quaero ouvre lui-même le navigateur
 sur le lien qui le porte. Le jeton passe une fois dans l'adresse, disparaît de
 la barre d'adresse, puis vit à deux endroits. Un cookie `HttpOnly`
 `SameSite=Strict` ouvre la page et ses polices. L'API exige le jeton dans
@@ -201,9 +203,15 @@ tout autre serveur de 127.0.0.1, qui pourrait le rejouer. Le stockage de la
 page, lui, est propre à son port, et une page d'un autre site ne peut pas
 poser cet en-tête. Chercher, lire un rapport ou lancer une analyse demande
 donc le jeton lui-même. Sans session, rien n'est servi, pas même les polices.
-Avec `-no-browser`, le lien de session s'affiche dans le terminal. Après un
-redémarrage, l'ancien onglet n'a plus le bon jeton: Quaero en ouvre un nouveau,
-et l'ancien affiche une seule ligne, « Session non ouverte, relance Quaero. »
+Avec `-no-browser`, le lien de session s'affiche dans le terminal.
+
+Un onglet ouvert survit à une relance. La page tient une requête ouverte chez
+Quaero. Quand il s'arrête, une ligne le dit en tête de page, et la page retente
+chaque seconde. Relancé, Quaero attend deux secondes et demie. Si l'onglet se
+manifeste, il reprend tout seul et aucun autre ne s'ouvre, sinon Quaero ouvre
+le navigateur. Un onglet resté en arrière-plan longtemps peut être ralenti par
+le navigateur, Quaero en ouvre alors un second. Si le jeton a changé, l'ancien
+onglet affiche une seule ligne, « Session fermée ».
 
 Ce qui change un état (lancer ou annuler une analyse) n'accepte que `POST`, et
 seulement depuis la page elle-même. `SameSite` ne distingue pas les ports. Une
@@ -212,7 +220,8 @@ l'accompagne. Son en-tête `Origin`, lui, la trahit, et la requête est refusée
 
 Écouter sur toutes les interfaces (`-addr 0.0.0.0:7777`) désactive le contrôle
 de `Host`. Seul le jeton protège alors l'interface, et le terminal le signale.
-Les dossiers locaux et les rapports enregistrés sont alors fermés.
+Les dossiers locaux et les rapports enregistrés sont alors fermés, et le jeton
+est tiré à chaque lancement, jamais écrit.
 
 ## Ce que la phrase peut exprimer
 
@@ -536,9 +545,13 @@ citer du code privé.
   comme après une analyse.
 - « supprimer » efface le fichier, après confirmation.
 - « importer un rapport » range un fichier écrit par `-scan-json`, sur cette
-  machine ou une autre, jusqu'à 20 Mo et 50 000 constats. Seul son format est
-  vérifié, son contenu reste une donnée affichée. Le même rapport importé deux
-  fois n'est rangé qu'une fois.
+  machine ou une autre, jusqu'à 20 Mo et 50 000 constats. Un fichier déposé
+  n'importe où sur la page fait de même, plusieurs à la fois si besoin. Seul
+  leur format est vérifié, leur contenu reste une donnée affichée. Les
+  rapports du dossier sont déjà dans la liste. Un rapport déjà rangé n'est
+  pas rangé deux fois, il est rouvert avec l'étiquette « déjà dans la liste ».
+  Le navigateur ne laisse pas une page choisir le dossier où s'ouvre le
+  sélecteur de fichiers.
 - Le fichier d'un rapport enregistré se relit tel quel avec `-advisory`.
 
 Un rapport décrit des failles pas encore corrigées. Garde-le en privé, comme
@@ -546,8 +559,8 @@ les brouillons. Ceux-ci se préparent à la demande, en mémoire, et ne sont pas
 enregistrés. Rien n'est envoyé.
 
 La page ne parle qu'à Quaero, sur ta machine, et marche sans réseau tant que
-Quaero tourne. S'il est arrêté, une ligne en tête de page le dit. Relance-le, il
-ouvre un nouvel onglet avec une nouvelle session, l'ancien ne sert plus.
+Quaero tourne. S'il est arrêté, une ligne en tête de page le dit. Relancé, il
+reprend dans le même onglet (voir « Session et contrôle de l'hôte »).
 
 ## Structure
 

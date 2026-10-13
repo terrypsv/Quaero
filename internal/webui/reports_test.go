@@ -126,10 +126,23 @@ func TestImportEtSuppression(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("import: %d %s", rec.Code, rec.Body.String())
 	}
-	var out struct{ Report reports.Entry }
+	var out struct {
+		Report   reports.Entry
+		Existing bool
+	}
 	_ = json.Unmarshal(rec.Body.Bytes(), &out)
-	if !reports.ValidID(out.Report.ID) {
-		t.Fatalf("identifiant %q", out.Report.ID)
+	if !reports.ValidID(out.Report.ID) || out.Existing {
+		t.Fatalf("import: %+v", out)
+	}
+	// Le meme fichier, repris par exemple du dossier des rapports, rend celui
+	// qui y est deja.
+	var again struct {
+		Report   reports.Entry
+		Existing bool
+	}
+	_ = json.Unmarshal(postJSON(h, "/api/reports/import", string(data), ourOrigin).Body.Bytes(), &again)
+	if again.Report.ID != out.Report.ID || !again.Existing {
+		t.Errorf("second import du meme rapport: %+v", again)
 	}
 
 	var view struct{ View scanView }

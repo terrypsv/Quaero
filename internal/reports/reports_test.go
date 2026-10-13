@@ -75,7 +75,7 @@ func TestNomsRefuses(t *testing.T) {
 func TestImport(t *testing.T) {
 	s := &Store{Dir: t.TempDir()}
 	data, _ := json.Marshal(sample("github.com/a/b"))
-	e, err := s.Import(data)
+	e, _, err := s.Import(data)
 	if err != nil || e.Target != "github.com/a/b" {
 		t.Fatalf("import: %+v %v", e, err)
 	}
@@ -86,7 +86,7 @@ func TestImport(t *testing.T) {
 		"sans constats":     `{"schema_version":"1.0","tool":{"name":"x"}}`,
 		"tableau a la base": `[]`,
 	} {
-		if _, err := s.Import([]byte(bad)); !errors.Is(err, ErrInvalid) {
+		if _, _, err := s.Import([]byte(bad)); !errors.Is(err, ErrInvalid) {
 			t.Errorf("%s: %v, attendu un refus", name, err)
 		}
 	}
@@ -98,7 +98,7 @@ func TestImportNomTire(t *testing.T) {
 	rep := sample("x")
 	rep.Run.ID = "../../evade"
 	data, _ := json.Marshal(rep)
-	e, err := s.Import(data)
+	e, _, err := s.Import(data)
 	if err != nil || !ValidID(e.ID) || strings.Contains(e.ID, "evade") {
 		t.Errorf("import: %+v %v", e, err)
 	}
@@ -146,14 +146,14 @@ func TestImportSansDoublon(t *testing.T) {
 	}
 	rep, _ := s.Load(saved.ID)
 	data, _ := json.Marshal(rep)
-	again, err := s.Import(data)
-	if err != nil || again.ID != saved.ID {
-		t.Errorf("reimport: %+v %v, attendu %s", again, err, saved.ID)
+	again, existing, err := s.Import(data)
+	if err != nil || again.ID != saved.ID || !existing {
+		t.Errorf("reimport: %+v %v %v, attendu %s deja range", again, existing, err, saved.ID)
 	}
 	other := sample("github.com/a/b")
 	other.Run.FinishedAt = rep.Run.FinishedAt
 	data, _ = json.Marshal(other)
-	if e, err := s.Import(data); err != nil || e.ID == saved.ID {
+	if e, existing, err := s.Import(data); err != nil || e.ID == saved.ID || existing {
 		t.Errorf("une autre analyse de la meme seconde doit etre rangee a part: %+v %v", e, err)
 	}
 	files, _ := os.ReadDir(s.Dir)
@@ -193,7 +193,7 @@ func TestImportDateLibre(t *testing.T) {
 	futur := sample("futur")
 	futur.Run.FinishedAt = time.Date(9999, 12, 31, 23, 59, 59, 0, time.FixedZone("x", -(23*3600+59*60)))
 	data, _ := json.Marshal(futur)
-	e, err := s.Import(data)
+	e, _, err := s.Import(data)
 	if err != nil || !ValidID(e.ID) {
 		t.Fatalf("import: %+v %v", e, err)
 	}
@@ -218,7 +218,7 @@ func TestListeParDateDAnalyse(t *testing.T) {
 	vieux.Run.FinishedAt = vieux.Run.StartedAt.Add(time.Minute)
 	data, _ := json.Marshal(vieux)
 	time.Sleep(1100 * time.Millisecond)
-	if _, err := s.Import(data); err != nil {
+	if _, _, err := s.Import(data); err != nil {
 		t.Fatal(err)
 	}
 	list, _ := s.List()

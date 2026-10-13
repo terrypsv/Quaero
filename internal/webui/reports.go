@@ -201,7 +201,7 @@ func (s *Server) handleReportImport(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusRequestEntityTooLarge, map[string]string{"error": "rapport trop gros", "code": "trop_gros"})
 		return
 	}
-	e, err := s.Reports.Import(data)
+	e, existing, err := s.Reports.Import(data)
 	switch {
 	case errors.Is(err, reports.ErrInvalid):
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error(), "code": "pas_un_rapport"})
@@ -213,7 +213,7 @@ func (s *Server) handleReportImport(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "rapport non enregistre: " + err.Error()})
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"report": e})
+	writeJSON(w, http.StatusOK, map[string]any{"report": e, "existing": existing})
 }
 
 // handleReportDelete efface un rapport enregistre.
