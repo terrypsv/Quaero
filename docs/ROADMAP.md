@@ -42,7 +42,7 @@
 - [x] Cent dépôts par formulation, affichage par 5, 20, 50, 100 ou tous,
       "charger la suite" avec son coût en requêtes
 - [ ] Validation d'usage réel sur des recherches quotidiennes
-- [ ] Release multi-plateforme
+- [x] Release multi-plateforme
 
 ## v0.2.0 - recherche sémantique
 
@@ -57,7 +57,7 @@
 - [ ] Signaux de gouvernance: nombre de mainteneurs actifs, cadence des versions
 - [ ] Export du verdict de santé, réutilisable par un outil d'analyse de dépendances
 
-## v0.4.0 - audit de code (en cours)
+## v0.4.0 - audit de code
 
 De la santé du dépôt vers la sécurité de son code. Le périmètre reste la
 lecture: Quaero analyse, il n'exploite rien.
@@ -126,10 +126,22 @@ lecture: Quaero analyse, il n'exploite rien.
       rien en faire
 - [x] Limite d'analyse affichée dans l'onglet audit, à la place du quota
 - [x] Échecs de clone dits en une ligne, un message par cas
-- [x] Logo du README, Quaero avec un Q majuscule, sur fond sombre
-- [ ] Mode hors ligne pour les dépôts dont même la liste des dépendances est
-      confidentielle (bases OSV et Go téléchargées à l'avance)
+- [x] Logo du README, Quaero avec un Q majuscule, sur fond sombre, et
+      logotype « Quaero » dans l'interface
+
+## v0.5.0 - du constat au signalement
+
+Trier vite et bien ce que les moteurs relèvent, puis préparer le signalement
+de ce qui tient.
+
+- [ ] Rapports enregistrés sur la machine, rouverts sans réseau, importés
+      depuis un fichier `-scan-json`, exportés en JSON. Le brouillon de
+      signalement se prépare depuis n'importe quel rapport
+- [ ] Tri des constats sans modèle de langage: états gardés d'une analyse à
+      l'autre (à vérifier, faux positif, confirmé, signalé) et pré-tri par
+      règles (tests, exemples, code généré, CI, atteignabilité)
 - [ ] Bac à sable d'exécution pour analyser un dépôt tiers non fiable
+- [ ] En dernier recours seulement, tri assisté par un modèle de langage
 
 ## Discipline (non négociable)
 
