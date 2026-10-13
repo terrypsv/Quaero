@@ -35,9 +35,9 @@ import (
 //     pas mise en file: lancer n'est jamais un effet de bord;
 //   - les routes qui lancent ou annulent n'acceptent que POST, derriere le
 //     garde de session et le controle d'origine (guard.go);
-//   - le rapport fini est garde dans le dossier des rapports de l'utilisateur
-//     (reports.go), le brouillon reste en memoire. Rien n'est envoye: le
-//     signalement se depose a la main.
+//   - le rapport et le brouillon restent en memoire, dans ce processus. Le
+//     rapport n'est garde sur la machine que si l'utilisateur l'enregistre
+//     (reports.go). Rien n'est envoye: le signalement se depose a la main.
 
 // Etapes annoncees par une ScanFunc pendant son travail.
 const (
@@ -152,6 +152,7 @@ type scanJob struct {
 	report    *finding.Report
 	savedID   string
 	saveErr   string
+	saving    bool
 	cancel    context.CancelFunc
 	done      chan struct{}
 }
@@ -190,8 +191,8 @@ type scanView struct {
 	// Reportable liste les constats qui peuvent devenir un signalement: ceux
 	// du code et des dependances, pas ceux sur le scan lui-meme.
 	Reportable []string `json:"reportable,omitempty"`
-	// Saved nomme le rapport enregistre sur la machine, SaveError dit pourquoi
-	// il ne l'a pas ete.
+	// Saved nomme le rapport enregistre sur la machine a la demande de
+	// l'utilisateur, SaveError dit pourquoi il ne l'a pas ete.
 	Saved     string `json:"saved_id,omitempty"`
 	SaveError string `json:"save_error,omitempty"`
 	// SavedAt date un rapport rouvert.
@@ -243,7 +244,7 @@ const savedPrefix = "r:"
 
 // start lance une analyse si aucune ne tourne. Elle rend l'analyse lancee, ou
 // celle qui tourne deja et false, ou errClosing si Quaero s'arrete.
-func (s *scanJobs) start(scan ScanFunc, t ScanTarget, save func(*finding.Report) (string, error)) (*scanJob, bool, error) {
+func (s *scanJobs) start(scan ScanFunc, t ScanTarget) (*scanJob, bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.closed {
@@ -271,20 +272,7 @@ func (s *scanJobs) start(scan ScanFunc, t ScanTarget, save func(*finding.Report)
 	go func() {
 		defer cancel()
 		rep, err := scan(ctx, t, func(stage string) { s.stage(job, stage) })
-		// Une analyse finie est enregistree avant d'etre montree: la rouvrir
-		// plus tard ne demande ni reseau ni nouvelle analyse.
-		// ctx.Err() est lu une fois: une annulation pendant l'ecriture ne doit
-		// pas laisser une analyse dite annulee avec un rapport garde.
-		ctxErr := ctx.Err()
-		var savedID, saveErr string
-		if err == nil && rep != nil && ctxErr == nil && save != nil {
-			if id, serr := save(rep); serr != nil {
-				saveErr = serr.Error()
-			} else {
-				savedID = id
-			}
-		}
-		s.finish(job, rep, err, ctxErr, savedID, saveErr)
+		s.finish(job, rep, err, ctx.Err())
 	}()
 	return job, true, nil
 }
@@ -299,11 +287,10 @@ func (s *scanJobs) stage(job *scanJob, stage string) {
 	}
 }
 
-func (s *scanJobs) finish(job *scanJob, rep *finding.Report, err, ctxErr error, savedID, saveErr string) {
+func (s *scanJobs) finish(job *scanJob, rep *finding.Report, err, ctxErr error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	job.ended = time.Now()
-	job.savedID, job.saveErr = savedID, saveErr
 	switch {
 	case ctxErr != nil:
 		// Une analyse annulee ne rend rien: un resultat partiel passerait pour
@@ -433,7 +420,7 @@ func (s *Server) handleScan(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error(), "code": targetErrorCode(err)})
 			return
 		}
-		job, started, err := s.scans.start(s.Scan, target, s.saveReport)
+		job, started, err := s.scans.start(s.Scan, target)
 		if err != nil {
 			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": err.Error()})
 			return

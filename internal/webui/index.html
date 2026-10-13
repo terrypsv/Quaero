@@ -275,6 +275,7 @@
   .rapports-liste code { overflow-wrap: anywhere; }
   .rapports-liste .lien { font-size: 13px; }
   .rapport-actions { margin-top: 12px; }
+  #rapports-msg { margin: 10px 0; }
 
   .pied { flex-shrink: 0; background: var(--encre); color: var(--papier); border-top: 6px solid var(--acide); }
   .pied-in {
@@ -369,6 +370,7 @@
           <button type="button" class="choix" id="importer">importer un rapport</button>
           <input type="file" id="fichier-rapport" accept=".json,application/json" hidden>
         </div>
+        <p class="erreur" id="rapports-msg" hidden></p>
         <ol class="rapports-liste" id="rapports-liste"></ol>
         <p class="base" id="rapports-dossier"></p>
       </div>
@@ -618,27 +620,50 @@ var session = (function () {
   return t;
 })();
 
+// La page ne parle qu'a Quaero, sur cette machine: une requete qui ne part pas
+// veut dire que Quaero est arrete, pas que le reseau manque. Relance, il ouvre
+// un nouvel onglet avec une nouvelle session.
+var QUAERO_DOWN = "Quaero ne répond plus. Relance-le, puis continue dans l'onglet qu'il ouvre.";
+
 function qfetch(url, opts) {
   opts = opts || {};
   opts.headers = opts.headers || {};
   opts.headers["X-Quaero-Session"] = session;
   return fetch(url, opts).then(function (r) {
+    topLine("quaero-arrete", "");
     if (r.status === 401) sessionLost();
     return r;
+  }, function () {
+    topLine("quaero-arrete", QUAERO_DOWN);
+    var e = new Error(QUAERO_DOWN);
+    e.down = true;
+    throw e;
   });
+}
+
+// topLine affiche une ligne en tete de page, ou la retire si text est vide.
+function topLine(id, text) {
+  var p = $(id);
+  if (!text) { if (p) p.remove(); return; }
+  if (!p) {
+    p = document.createElement("p");
+    p.id = id;
+    p.className = "erreur";
+    var tabs = document.querySelector(".onglets");
+    tabs.parentNode.insertBefore(p, tabs);
+  }
+  p.textContent = text;
 }
 
 // Une session perdue (Quaero relance, ou onglet d'une autre execution) se dit
 // en une ligne, en tete de page.
 function sessionLost() {
-  if ($("session-perdue")) return;
-  var p = document.createElement("p");
-  p.id = "session-perdue";
-  p.className = "erreur";
-  p.textContent = "Session non ouverte, relance Quaero.";
-  var tabs = document.querySelector(".onglets");
-  tabs.parentNode.insertBefore(p, tabs);
+  topLine("session-perdue", "Session fermée. Continue dans l'onglet que Quaero a ouvert à son dernier lancement.");
 }
+
+// failTitle et failText disent en une ligne pourquoi une requete a echoue.
+function failTitle(err) { return err && err.down ? "Quaero arrêté" : "erreur"; }
+function failText(err) { return err && err.message ? err.message : String(err); }
 
 function esc(s) {
   return String(s == null ? "" : s)
@@ -918,7 +943,7 @@ function run(opts) {
       if (opts.more) $("out").scrollIntoView({ block: "start" });
     })
     .catch(function (err) {
-      $("out").innerHTML = '<p class="erreur"><b>erreur réseau</b>' + esc(String(err)) + "</p>";
+      $("out").innerHTML = '<p class="erreur"><b>' + esc(failTitle(err)) + "</b>" + esc(failText(err)) + "</p>";
     })
     .then(function () { $("go").disabled = false; });
 }
@@ -1445,7 +1470,7 @@ function startScan() {
     }
     setNotice("erreur", d.error || "analyse impossible (" + d.status + ")");
   }).catch(function (err) {
-    setNotice("erreur réseau", String(err));
+    setNotice(failTitle(err), failText(err));
   });
 }
 
@@ -1579,6 +1604,7 @@ function renderAudit() {
   if ($("annuler")) $("annuler").onclick = cancelScan;
   bindAudit($("audit"));
   bind("#audit [data-export]", exportReport);
+  bind("#audit [data-save-report]", saveScanReport);
   bind("#audit [data-close-view]", function () { setView(null); });
 }
 
@@ -1708,10 +1734,16 @@ function auditResult(job) {
   var h = '<div class="bandeau"><h2>' + n + (n > 1 ? " constats" : " constat") + "<small>" + where
         + (ctx.commit ? ", commit " + esc(String(ctx.commit).slice(0, 7)) : "")
         + ", " + duration(job.elapsed_s) + "</small></h2></div>";
-  var state = job.saved_at ? "rapport du " + frDate(job.saved_at)
-    : job.saved_id ? "rapport enregistré"
-    : job.save_error ? "rapport non enregistré, " + job.save_error : "";
-  h += '<div class="actions rapport-actions">' + (state ? '<span class="base">' + esc(state) + "</span>" : "")
+  // Rien n'est garde sans le demander: l'analyse reste en memoire jusqu'a la
+  // suivante, « enregistrer » la range avec les autres rapports.
+  var state = "", save = "";
+  if (job.saved_at) state = "rapport du " + frDate(job.saved_at);
+  else if (job.saved_id) state = "rapport enregistré";
+  else if (audit.reportsOn) {
+    state = job.save_error ? "non enregistré, " + job.save_error : "non enregistré, oublié à la prochaine analyse";
+    save = '<button type="button" class="choix" data-save-report="1">enregistrer</button>';
+  }
+  h += '<div class="actions rapport-actions">' + (state ? '<span class="base">' + esc(state) + "</span>" : "") + save
      + '<button type="button" class="choix" data-export="1">exporter .json</button>'
      + (audit.view ? '<button type="button" class="choix" data-close-view="1">fermer ce rapport</button>' : "") + "</div>";
   h += eng.html;
@@ -1792,7 +1824,7 @@ function toggleDraft(id) {
     if (r.status !== 200) { setNotice("brouillon impossible", r.error || String(r.status)); return; }
     audit.drafts[id] = { text: r.draft, file: r.file, open: true };
     refreshItem(id);
-  }).catch(function (err) { setNotice("erreur réseau", String(err)); });
+  }).catch(function (err) { setNotice(failTitle(err), failText(err)); });
 }
 
 function copyDraft(id, button) {
@@ -1860,7 +1892,7 @@ function renderReports() {
        + '<button type="button" class="lien" data-open-report="' + esc(r.id) + '">ouvrir</button>'
        + '<button type="button" class="lien" data-del-report="' + esc(r.id) + '">supprimer</button></li>';
   });
-  $("rapports-liste").innerHTML = h || '<li class="base">Aucun rapport pour l\'instant. Chaque analyse finie est gardée ici.</li>';
+  $("rapports-liste").innerHTML = h || '<li class="base">Aucun rapport pour l\'instant. Après une analyse, « enregistrer » la garde ici.</li>';
   $("rapports-dossier").textContent = audit.reportsDir ? "Gardés sur ta machine, dans " + audit.reportsDir + ", et nulle part ailleurs." : "";
   bind("#rapports-liste [data-open-report]", function (b) { openReport(b.getAttribute("data-open-report")); });
   bind("#rapports-liste [data-del-report]", function (b) { deleteReport(b.getAttribute("data-del-report")); });
@@ -1877,21 +1909,45 @@ function setView(view) {
   renderReports();
 }
 
+// panelMsg dit, dans le panneau des rapports, pourquoi une action a echoue.
+// Sans titre, il s'efface.
+function panelMsg(title, text) {
+  var p = $("rapports-msg");
+  p.hidden = !title;
+  p.innerHTML = title ? "<b>" + esc(title) + "</b>" + esc(text) : "";
+}
+
+function panelFail(err) { panelMsg(failTitle(err), failText(err)); }
+
 function openReport(id) {
   api("GET", "/api/reports/view?id=" + encodeURIComponent(id)).then(function (d) {
-    if (d.status !== 200 || !d.view) { setNotice("rapport introuvable", "Il a peut-être été effacé du dossier."); loadReports(); return; }
+    if (d.status !== 200 || !d.view) { panelMsg("rapport introuvable", "Il a peut-être été effacé du dossier."); loadReports(); return; }
+    panelMsg();
     setView(d.view);
     $("audit").scrollIntoView({ block: "start" });
-  }).catch(function (err) { setNotice("erreur réseau", String(err)); });
+  }).catch(panelFail);
 }
 
 function deleteReport(id) {
   if (!window.confirm("Supprimer ce rapport de ta machine ?")) return;
   api("POST", "/api/reports/delete", "id=" + encodeURIComponent(id)).then(function (d) {
     loadReports();
-    if (d.status !== 200 && d.status !== 404) { setNotice("suppression impossible", d.error || String(d.status)); return; }
+    if (d.status !== 200 && d.status !== 404) { panelMsg("suppression impossible", d.error || String(d.status)); return; }
+    panelMsg();
     if (audit.view && audit.view.saved_id === id) setView(null);
-  }).catch(function (err) { setNotice("erreur réseau", String(err)); });
+  }).catch(panelFail);
+}
+
+// saveScanReport range l'analyse affichee avec les rapports, a la demande.
+function saveScanReport(button) {
+  var job = audit.job;
+  if (!job || audit.view) return;
+  button.disabled = true;
+  button.textContent = "enregistrement en cours";
+  api("POST", "/api/scan/save", "id=" + encodeURIComponent(job.id)).then(function (d) {
+    if (d.job) setJob(d.job);
+    if (d.status !== 200) setNotice("rapport non enregistré", d.error || String(d.status));
+  }).catch(function (err) { setNotice(failTitle(err), failText(err)); });
 }
 
 var IMPORT_ERRORS = {
@@ -1904,19 +1960,19 @@ var IMPORT_ERRORS = {
 // avec les autres rapports. Seul son schema est controle par le serveur.
 function importReport(file) {
   if (!file) return;
-  if (file.size > 20 * 1024 * 1024) { setNotice("import refusé", IMPORT_ERRORS.trop_gros); return; }
+  if (file.size > 20 * 1024 * 1024) { panelMsg("import refusé", IMPORT_ERRORS.trop_gros); return; }
   file.text().then(function (text) {
     return qfetch("/api/reports/import", { method: "POST", headers: { "Content-Type": "application/json" }, body: text });
   }).then(function (r) {
     return r.json().catch(function () { return {}; }).then(function (d) { d.status = r.status; return d; });
   }).then(function (d) {
     if (d.status !== 200 || !d.report) {
-      setNotice("import refusé", IMPORT_ERRORS[d.code] || d.error || "import impossible");
+      panelMsg("import refusé", IMPORT_ERRORS[d.code] || d.error || "import impossible");
       return;
     }
     loadReports();
     openReport(d.report.id);
-  }).catch(function (err) { setNotice("erreur", String(err)); })
+  }).catch(panelFail)
     .then(function () { $("fichier-rapport").value = ""; });
 }
 

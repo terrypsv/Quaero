@@ -9,27 +9,79 @@ import (
 	"math"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/terrypsv/Quaero/internal/finding"
 	"github.com/terrypsv/Quaero/internal/repo"
 	"github.com/terrypsv/Quaero/internal/reports"
 )
 
-// Les rapports enregistres se rouvrent sans reseau: la liste, la lecture, le
-// brouillon de signalement et l'export ne demandent rien a GitHub ni aux
-// moteurs. Un rapport importe est une donnee, la page l'echappe comme le
-// reste et seul son schema est controle (voir reports.Parse).
+// Un rapport n'est garde sur la machine que si l'utilisateur le demande: une
+// analyse de passage ne laisse rien. Les rapports enregistres se rouvrent sans
+// reseau: la liste, la lecture, le brouillon de signalement et l'export ne
+// demandent rien a GitHub ni aux moteurs. Un rapport importe est une donnee,
+// la page l'echappe comme le reste et seul son schema est controle (voir
+// reports.Parse).
 
-// saveReport enregistre un rapport fini, si Quaero a un dossier de rapports.
-func (s *Server) saveReport(rep *finding.Report) (string, error) {
-	if s.Reports == nil {
-		return "", nil
+// errNoReport dit qu'il n'y a pas, ou plus, de rapport a enregistrer pour
+// cette analyse: une autre l'a remplacee, ou elle n'a pas fini.
+var errNoReport = errors.New("aucun rapport pour cette analyse, relancer l'analyse")
+
+// save enregistre une fois le rapport de l'analyse id, finie. Un second appel
+// rend le meme rapport, l'ecriture se fait hors du verrou.
+func (s *scanJobs) save(id string, store *reports.Store) (scanView, error) {
+	s.mu.Lock()
+	job := s.cur
+	if job == nil || job.id != id || job.report == nil {
+		s.mu.Unlock()
+		return scanView{}, errNoReport
 	}
-	e, err := s.Reports.Save(rep)
+	if job.savedID != "" || job.saving {
+		v := job.view(time.Now())
+		s.mu.Unlock()
+		return v, nil
+	}
+	job.saving = true
+	rep := job.report
+	s.mu.Unlock()
+
+	e, err := store.Save(rep)
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	job.saving = false
 	if err != nil {
-		return "", err
+		job.saveErr = err.Error()
+		return job.view(time.Now()), err
 	}
-	return e.ID, nil
+	job.savedID, job.saveErr = e.ID, ""
+	return job.view(time.Now()), nil
+}
+
+// handleScanSave enregistre, a la demande, le rapport de la derniere analyse.
+func (s *Server) handleScanSave(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		methodNotAllowed(w, "POST")
+		return
+	}
+	if s.Reports == nil {
+		writeJSON(w, http.StatusNotImplemented, map[string]string{"error": "rapports indisponibles dans cette execution"})
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, maxFormBytes)
+	if err := r.ParseForm(); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "requete illisible"})
+		return
+	}
+	v, err := s.scans.save(r.PostForm.Get("id"), s.Reports)
+	switch {
+	case errors.Is(err, errNoReport):
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
+	case err != nil:
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "rapport non enregistre: " + err.Error(), "job": v})
+	default:
+		writeJSON(w, http.StatusOK, map[string]any{"job": v})
+	}
 }
 
 // reportFor rend le rapport designe par la page: l'analyse courante, ou un

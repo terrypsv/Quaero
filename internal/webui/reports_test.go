@@ -48,16 +48,40 @@ func listOf(t *testing.T, h http.Handler) listReply {
 	return out
 }
 
-// Une analyse finie est enregistree, se rouvre et donne ses brouillons sans
-// nouvelle analyse.
+// Une analyse finie ne laisse rien sur la machine tant qu'on ne l'enregistre
+// pas. Enregistree, elle se rouvre et donne ses brouillons sans nouvelle
+// analyse.
 func TestAnalyseEnregistreeEtRouverte(t *testing.T) {
 	s, h, f := reportServer(t)
 	post(h, "/api/scan", url.Values{"cible": {"mushorg/cowrie"}}, ourOrigin)
 	close(f.release)
 	wait(t, s)
 	job := decode(t, get(h, "/api/scan")).Job
-	if job.Saved == "" || job.SaveError != "" {
-		t.Fatalf("rapport non enregistre: %+v", job)
+	if job.Saved != "" {
+		t.Fatalf("rapport enregistre sans qu'on le demande: %+v", job)
+	}
+	if n := len(listOf(t, h).Reports); n != 0 {
+		t.Fatalf("%d rapports avant d'enregistrer", n)
+	}
+	if rec := get(h, "/api/scan/save?id="+job.ID); rec.Code != http.StatusMethodNotAllowed {
+		t.Errorf("enregistrer en GET: %d", rec.Code)
+	}
+	if rec := post(h, "/api/scan/save", url.Values{"id": {job.ID}}, "http://127.0.0.1:8080"); rec.Code != http.StatusForbidden {
+		t.Errorf("enregistrer depuis une autre origine: %d", rec.Code)
+	}
+	if rec := post(h, "/api/scan/save", url.Values{"id": {"autre"}}, ourOrigin); rec.Code != http.StatusNotFound {
+		t.Errorf("enregistrer une autre analyse: %d", rec.Code)
+	}
+	rec := post(h, "/api/scan/save", url.Values{"id": {job.ID}}, ourOrigin)
+	job = decode(t, rec).Job
+	if rec.Code != http.StatusOK || job == nil || job.Saved == "" || job.SaveError != "" {
+		t.Fatalf("enregistrement: %d %s", rec.Code, rec.Body.String())
+	}
+	if again := decode(t, post(h, "/api/scan/save", url.Values{"id": {job.ID}}, ourOrigin)).Job; again == nil || again.Saved != job.Saved {
+		t.Errorf("second enregistrement: %+v, attendu %s", again, job.Saved)
+	}
+	if again := decode(t, get(h, "/api/scan")).Job; again.Saved != job.Saved {
+		t.Errorf("l'analyse ne dit pas qu'elle est enregistree: %+v", again)
 	}
 	list := listOf(t, h)
 	if !list.Available || len(list.Reports) != 1 || list.Reports[0].ID != job.Saved || list.Reports[0].Findings != 1 {
@@ -72,7 +96,7 @@ func TestAnalyseEnregistreeEtRouverte(t *testing.T) {
 	if v.ID != "r:"+job.Saved || v.Repo != "mushorg/cowrie" || v.URL == "" || v.State != stateDone || len(v.Reportable) != 1 || v.Result == nil {
 		t.Errorf("rapport rouvert: %+v", v)
 	}
-	rec := get(h, "/api/scan/advisory?id=r:"+job.Saved+"&finding=QRO-SEMGREP-regle-x-internal-a-go-12")
+	rec = get(h, "/api/scan/advisory?id=r:"+job.Saved+"&finding=QRO-SEMGREP-regle-x-internal-a-go-12")
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "github.com/mushorg/cowrie") {
 		t.Errorf("brouillon depuis un rapport rouvert: %d %s", rec.Code, rec.Body.String())
 	}
@@ -144,5 +168,8 @@ func TestRapportsIndisponibles(t *testing.T) {
 	}
 	if rec := postJSON(h, "/api/reports/import", "{}", ourOrigin); rec.Code != http.StatusNotImplemented {
 		t.Errorf("import sans dossier: %d", rec.Code)
+	}
+	if rec := post(h, "/api/scan/save", url.Values{"id": {"x"}}, ourOrigin); rec.Code != http.StatusNotImplemented {
+		t.Errorf("enregistrer sans dossier: %d", rec.Code)
 	}
 }

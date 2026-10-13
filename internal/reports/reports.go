@@ -120,6 +120,7 @@ func (s *Store) Save(rep *finding.Report) (Entry, error) {
 	}
 	// Un dossier cree plus large par un autre outil est resserre. Sous Windows,
 	// seul l'attribut lecture seule bouge, les droits restent ceux du profil.
+	// #nosec G302 -- c'est un dossier: 0700 est le minimum pour y entrer.
 	_ = os.Chmod(s.Dir, 0o700)
 	for try := 0; ; try++ {
 		id, err := newID(time.Now())
@@ -144,6 +145,8 @@ func (s *Store) Save(rep *finding.Report) (Entry, error) {
 // writeNew cree path sans jamais ecraser ni suivre un fichier existant. 0600:
 // le rapport decrit des failles non corrigees.
 func writeNew(path string, data []byte) error {
+	// #nosec G304 -- path vient de Store.path, un nom tire par Quaero et
+	// verifie par ValidID, jamais lu dans le rapport.
 	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
 		return err

@@ -518,10 +518,11 @@ Lancer reste un geste à part.
 
 ### Rapports enregistrés
 
-Chaque analyse finie est enregistrée dans `~/.quaero/rapports`, soit
-`%USERPROFILE%\.quaero\rapports` sous Windows. Un fichier JSON par analyse, au
+Une analyse finie reste en mémoire jusqu'à la suivante. Pour la garder, clique
+« enregistrer » sous son titre. Elle va dans `~/.quaero/rapports`, soit
+`%USERPROFILE%\.quaero\rapports` sous Windows, un fichier JSON par analyse au
 même format que `-scan-json`. Sous Linux et macOS, le dossier et les fichiers
-ne sont lisibles que par toi. Une analyse annulée ou en échec n'écrit rien.
+ne sont lisibles que par toi. Rien n'est écrit sans ce clic.
 Quand Quaero écoute sur toutes les interfaces (`-addr 0.0.0.0:7777`), les
 rapports ne sont ni gardés ni servis, comme les dossiers locaux. Ils peuvent
 citer du code privé.
@@ -541,6 +542,10 @@ citer du code privé.
 Un rapport décrit des failles pas encore corrigées. Garde-le en privé, comme
 les brouillons. Ceux-ci se préparent à la demande, en mémoire, et ne sont pas
 enregistrés. Rien n'est envoyé.
+
+La page ne parle qu'à Quaero, sur ta machine, et marche sans réseau tant que
+Quaero tourne. S'il est arrêté, une ligne en tête de page le dit. Relance-le, il
+ouvre un nouvel onglet avec une nouvelle session, l'ancien ne sert plus.
 
 ## Structure
 

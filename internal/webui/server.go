@@ -92,8 +92,9 @@ type Server struct {
 	// ScanTimeout est le delai accorde a chaque moteur d'une analyse, affiche
 	// dans l'onglet audit. Zero, la page ne l'affiche pas.
 	ScanTimeout time.Duration
-	// Reports garde les rapports d'analyse sur la machine (voir reports.go).
-	// Nil, rien n'est enregistre et la page ne propose pas de les rouvrir.
+	// Reports garde les rapports d'analyse que l'utilisateur enregistre (voir
+	// reports.go). Nil, la page ne propose ni de les enregistrer ni de les
+	// rouvrir.
 	Reports *reports.Store
 
 	cache     *searchCache
@@ -127,6 +128,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/scan", s.handleScan)
 	mux.HandleFunc("/api/scan/cancel", s.handleScanCancel)
 	mux.HandleFunc("/api/scan/advisory", s.handleScanAdvisory)
+	mux.HandleFunc("/api/scan/save", s.handleScanSave)
 	mux.HandleFunc("/api/reports", s.handleReports)
 	mux.HandleFunc("/api/reports/view", s.handleReportView)
 	mux.HandleFunc("/api/reports/import", s.handleReportImport)
