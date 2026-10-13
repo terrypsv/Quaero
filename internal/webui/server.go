@@ -100,6 +100,7 @@ type Server struct {
 	cache     *searchCache
 	scans     *scanJobs
 	importing atomic.Bool
+	presence  chan struct{}
 }
 
 // Pages are kept ten minutes: long enough to re-sort, page back and forth or
@@ -119,6 +120,9 @@ func (s *Server) Handler() http.Handler {
 	if s.scans == nil {
 		s.scans = &scanJobs{}
 	}
+	if s.presence == nil {
+		s.presence = make(chan struct{}, 1)
+	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", s.handleIndex)
 	mux.HandleFunc("/api/search", s.handleSearch)
@@ -133,8 +137,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/reports/view", s.handleReportView)
 	mux.HandleFunc("/api/reports/import", s.handleReportImport)
 	mux.HandleFunc("/api/reports/delete", s.handleReportDelete)
+	mux.HandleFunc("/api/presence", s.handlePresence)
 	mux.HandleFunc("/fonts/", s.handleFont)
-	return guard{token: s.Token, allowed: allowedHosts(s.Addr), next: mux}
+	return guard{token: s.Token, allowed: allowedHosts(s.Addr), next: mux, seen: s.notePresence}
 }
 
 func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {

@@ -268,6 +268,7 @@
   .meta .lien { margin-left: auto; }
   /* Rapports gardes sur la machine, a rouvrir sans reseau. */
   .panneau.rapports { max-width: none; }
+  #rapports.depot .panneau.rapports { background: var(--acide); border-style: dashed; }
   .rapports-liste { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
   .rapports-liste li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; padding: 4px 6px; }
   .rapports-liste li.on { background: var(--acide); }
@@ -373,7 +374,8 @@
       <div class="panneau rapports">
         <div class="actions">
           <button type="button" class="choix" id="importer">importer un rapport</button>
-          <input type="file" id="fichier-rapport" accept=".json,application/json" hidden>
+          <span class="base">ou dépose un fichier .json sur la page</span>
+          <input type="file" id="fichier-rapport" accept=".json,application/json" multiple hidden>
         </div>
         <p class="erreur" id="rapports-msg" hidden></p>
         <ol class="rapports-liste" id="rapports-liste"></ol>
@@ -626,9 +628,9 @@ var session = (function () {
 })();
 
 // La page ne parle qu'a Quaero, sur cette machine: une requete qui ne part pas
-// veut dire que Quaero est arrete, pas que le reseau manque. Relance, il ouvre
-// un nouvel onglet avec une nouvelle session.
-var QUAERO_DOWN = "Quaero ne répond plus. Relance-le, puis continue dans l'onglet qu'il ouvre.";
+// veut dire que Quaero est arrete, pas que le reseau manque. Relance, il garde
+// la meme session et cette page reprend (voir watchQuaero).
+var QUAERO_DOWN = "Quaero est arrêté. Relance-le, cette page reprendra toute seule.";
 
 function qfetch(url, opts) {
   opts = opts || {};
@@ -664,6 +666,36 @@ function topLine(id, text) {
 // en une ligne, en tete de page.
 function sessionLost() {
   topLine("session-perdue", "Session fermée. Continue dans l'onglet que Quaero a ouvert à son dernier lancement.");
+}
+
+// watchQuaero tient une requete ouverte chez Quaero. Elle tombe des qu'il
+// s'arrete, la page le dit et retente chaque seconde. La premiere reponse
+// apres une relance dit a Quaero que cet onglet est la: il n'en ouvre pas
+// d'autre, et la page recharge ce qu'elle montre.
+var watch = { down: false };
+
+function watchQuaero() {
+  qfetch(watch.down ? "/api/version" : "/api/presence").then(function (r) {
+    if (r.status === 401) return;
+    if (watch.down) {
+      watch.down = false;
+      reconnected();
+    }
+    // Une reponse inattendue (ancienne version sans veille) ne doit pas
+    // tourner en boucle serree.
+    setTimeout(watchQuaero, r.status === 204 || r.status === 200 ? 0 : 5000);
+  }, function () {
+    watch.down = true;
+    setTimeout(watchQuaero, 1000);
+  });
+}
+
+// reconnected recharge apres une relance ce qui vivait chez Quaero. Un rapport
+// rouvert reste affiche, l'analyse en memoire de l'execution precedente non.
+function reconnected() {
+  loadScan();
+  loadReports();
+  loadQuota();
 }
 
 // failTitle et failText disent en une ligne pourquoi une requete a echoue.
@@ -834,12 +866,14 @@ function init() {
   loadScan();
   loadReports();
   $("importer").onclick = function () { $("fichier-rapport").click(); };
-  $("fichier-rapport").onchange = function () { importReport(this.files && this.files[0]); };
+  $("fichier-rapport").onchange = function () { importFiles(Array.prototype.slice.call(this.files || [])); };
   qfetch("/api/version").then(function (r) { return r.json(); })
     .then(function (d) { $("version").textContent = d.version || ""; })
     .catch(function () {});
   loadQuota();
   setInterval(drawQuota, 1000);
+  initDrop();
+  watchQuaero();
 }
 
 function filterParams(f) {
@@ -1899,7 +1933,8 @@ function renderReports() {
        + '<button type="button" class="lien" data-del-report="' + esc(r.id) + '">supprimer</button></li>';
   });
   $("rapports-liste").innerHTML = h || '<li class="base">Aucun rapport. Après une analyse, « enregistrer » la garde ici.</li>';
-  $("rapports-dossier").textContent = audit.reportsDir ? "Gardés sur ta machine, dans " + audit.reportsDir + ", et nulle part ailleurs." : "";
+  $("rapports-dossier").textContent = audit.reportsDir ? "Gardés sur ta machine, dans " + audit.reportsDir
+    + ". Ceux de ce dossier sont déjà dans la liste, l'import sert aux fichiers -scan-json venus d'ailleurs." : "";
   bind("#rapports-liste [data-open-report]", function (b) { openReport(b.getAttribute("data-open-report")); });
   bind("#rapports-liste [data-del-report]", function (b) { deleteReport(b.getAttribute("data-del-report")); });
 }
@@ -1926,12 +1961,12 @@ function panelMsg(title, text) {
 
 function panelFail(err) { panelMsg(failTitle(err), failText(err)); }
 
-function openReport(id, note) {
+function openReport(id, note, keepMsg) {
   api("GET", "/api/reports/view?id=" + encodeURIComponent(id)).then(function (d) {
     if (d.status !== 200 || !d.view) { panelMsg("rapport introuvable", "Il a peut-être été effacé du dossier."); loadReports(); return; }
-    panelMsg();
+    if (!keepMsg) panelMsg();
     setView(d.view, note);
-    $("audit").scrollIntoView({ block: "start" });
+    $("audit").scrollIntoView({ block: "nearest" });
   }).catch(panelFail);
 }
 
@@ -1965,24 +2000,74 @@ var IMPORT_ERRORS = {
   occupe: "Un import est déjà en cours, attends sa fin."
 };
 
-// importReport lit un fichier -scan-json choisi par l'utilisateur et le range
-// avec les autres rapports. Seul son schema est controle par le serveur.
-function importReport(file) {
-  if (!file) return;
-  if (file.size > 20 * 1024 * 1024) { panelMsg("import refusé", IMPORT_ERRORS.trop_gros); return; }
-  file.text().then(function (text) {
-    return qfetch("/api/reports/import", { method: "POST", headers: { "Content-Type": "application/json" }, body: text });
-  }).then(function (r) {
-    return r.json().catch(function () { return {}; }).then(function (d) { d.status = r.status; return d; });
-  }).then(function (d) {
-    if (d.status !== 200 || !d.report) {
-      panelMsg("import refusé", IMPORT_ERRORS[d.code] || d.error || "import impossible");
-      return;
-    }
+// importFiles range des fichiers -scan-json, choisis ou deposes, un a la fois,
+// puis ouvre le dernier. Seul leur schema est controle par le serveur. Un
+// fichier deja dans la liste n'est pas range deux fois, il est rouvert.
+function importFiles(files) {
+  if (!files.length || !audit.reportsOn) return;
+  showTab("audit");
+  $("rapports").open = true;
+  var last = null, refused = [], chain = Promise.resolve();
+  files.forEach(function (file) {
+    chain = chain.then(function () {
+      return importOne(file).then(function (r) {
+        if (r.id) last = r;
+        else refused.push(file.name + ", " + r.why);
+      });
+    });
+  });
+  chain.then(function () {
     loadReports();
-    openReport(d.report.id, "rapport importé");
+    if (refused.length) panelMsg("import refusé", refused.join(". "));
+    else panelMsg();
+    if (last) openReport(last.id, last.existing ? "déjà dans la liste" : "rapport importé", true);
   }).catch(panelFail)
     .then(function () { $("fichier-rapport").value = ""; });
+}
+
+function importOne(file) {
+  if (file.size > 20 * 1024 * 1024) return Promise.resolve({ why: IMPORT_ERRORS.trop_gros });
+  return file.text().then(function (text) {
+    return qfetch("/api/reports/import", { method: "POST", headers: { "Content-Type": "application/json" }, body: text });
+  }).then(function (r) {
+    return r.json().catch(function () { return {}; }).then(function (d) {
+      if (r.status === 200 && d.report) return { id: d.report.id, existing: !!d.existing };
+      return { why: IMPORT_ERRORS[d.code] || d.error || "import impossible" };
+    });
+  });
+}
+
+// initDrop accepte un fichier depose n'importe ou sur la page. Sans ce garde,
+// le navigateur l'ouvrirait a la place de Quaero et l'onglet serait perdu.
+function hasFiles(e) {
+  var types = e.dataTransfer && e.dataTransfer.types;
+  return !!types && Array.prototype.indexOf.call(types, "Files") >= 0;
+}
+
+function initDrop() {
+  var depth = 0;
+  var lit = function (on) { $("rapports").classList.toggle("depot", on && audit.reportsOn); if (on && audit.reportsOn) $("rapports").open = true; };
+  document.addEventListener("dragenter", function (e) {
+    if (!hasFiles(e)) return;
+    e.preventDefault();
+    if (depth++ === 0) lit(true);
+  });
+  document.addEventListener("dragover", function (e) {
+    if (!hasFiles(e)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = audit.reportsOn ? "copy" : "none";
+  });
+  document.addEventListener("dragleave", function (e) {
+    if (!hasFiles(e)) return;
+    if (--depth <= 0) { depth = 0; lit(false); }
+  });
+  document.addEventListener("drop", function (e) {
+    if (!hasFiles(e)) return;
+    e.preventDefault();
+    depth = 0;
+    lit(false);
+    importFiles(Array.prototype.slice.call(e.dataTransfer.files || []));
+  });
 }
 
 init();

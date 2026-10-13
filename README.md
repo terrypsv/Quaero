@@ -61,8 +61,9 @@ L'interface a deux onglets. **rechercher** trouve des dépôts, les classe et
 aide à resserrer une liste trop longue. **auditer** analyse un dépôt GitHub ou
 un dossier de ta machine, filtre les constats par gravité et prépare les
 signalements. Une analyse que tu enregistres reste sur ta machine et se
-rouvre plus tard sans réseau. Un rapport `-scan-json` s'importe pour préparer
-ses signalements depuis l'interface.
+rouvre plus tard sans réseau. Un rapport `-scan-json` s'importe, ou se dépose
+sur la page, pour préparer ses signalements depuis l'interface. Relancer
+Quaero reprend l'onglet déjà ouvert.
 
 La même chose existe en ligne de commande.
 

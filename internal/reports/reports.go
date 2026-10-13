@@ -163,18 +163,20 @@ func writeNew(path string, data []byte) error {
 
 // Import lit un rapport venu d'ailleurs (un fichier -scan-json), le verifie,
 // puis l'enregistre comme les autres. Une analyse deja rangee, par exemple un
-// rapport exporte puis reimporte, n'est pas rangee deux fois.
-func (s *Store) Import(data []byte) (Entry, error) {
+// fichier repris du dossier des rapports, n'est pas rangee deux fois: Import
+// rend alors celle qui y est, et existing le dit.
+func (s *Store) Import(data []byte) (e Entry, existing bool, err error) {
 	rep, err := Parse(data)
 	if err != nil {
-		return Entry{}, err
+		return Entry{}, false, err
 	}
 	s.importing.Lock()
 	defer s.importing.Unlock()
 	if e, ok := s.find(rep); ok {
-		return e, nil
+		return e, true, nil
 	}
-	return s.Save(rep)
+	e, err = s.Save(rep)
+	return e, false, err
 }
 
 // find cherche la meme analyse parmi les rapports ranges: meme identifiant

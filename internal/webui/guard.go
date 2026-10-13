@@ -23,9 +23,12 @@ import (
 // L'en-tete Host doit designer cette machine. Une requete rebondie porte le
 // domaine de l'attaquant, elle est refusee avant tout traitement.
 //
-// Chaque requete doit porter le jeton de session, tire au hasard a chaque
-// lancement. Quaero ouvre lui-meme le navigateur sur le lien qui le porte, le
-// jeton passe une fois dans l'adresse, puis vit a deux endroits.
+// Chaque requete doit porter le jeton de session, tire au hasard au premier
+// lancement puis garde dans ~/.quaero/session, lisible par l'utilisateur seul,
+// pour qu'un onglet ouvert survive a une relance (presence.go). Quand Quaero
+// ecoute sur toutes les interfaces, il en tire un neuf a chaque lancement,
+// sans l'ecrire. Quaero ouvre lui-meme le navigateur sur le lien qui le porte,
+// le jeton passe une fois dans l'adresse, puis vit a deux endroits.
 //
 // Un cookie HttpOnly et SameSite=Strict ouvre la page et ses polices. Il ne
 // suffit pas pour l'API: un cookie ne distingue pas les ports, le navigateur
@@ -50,8 +53,8 @@ const (
 //go:embed session.html
 var sessionHTML []byte
 
-// NewToken tire un jeton de session de 256 bits. Il ne vit qu'en memoire, le
-// temps d'une execution: rien n'est ecrit sur le disque.
+// NewToken tire un jeton de session de 256 bits. SessionToken le garde entre
+// deux lancements, sauf ecoute sur toutes les interfaces.
 func NewToken() (string, error) {
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
@@ -127,6 +130,9 @@ type guard struct {
 	token   string
 	allowed map[string]bool
 	next    http.Handler
+	// seen est appele a chaque appel de l'API avec le bon jeton: une page de
+	// la session est la (presence.go).
+	seen func()
 }
 
 func (g guard) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -173,6 +179,9 @@ func (g guard) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if !sameToken(r.Header.Get(sessionHeader), g.token) {
 			deny(w, r)
 			return
+		}
+		if g.seen != nil {
+			g.seen()
 		}
 	} else if c, err := r.Cookie(sessionCookie); err != nil || !sameToken(c.Value, g.token) {
 		deny(w, r)
