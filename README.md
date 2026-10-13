@@ -60,7 +60,9 @@ go install github.com/securego/gosec/v2/cmd/gosec@latest
 L'interface a deux onglets. **rechercher** trouve des dépôts, les classe et
 aide à resserrer une liste trop longue. **auditer** analyse un dépôt GitHub ou
 un dossier de ta machine, filtre les constats par gravité et prépare les
-signalements.
+signalements. Une analyse que tu enregistres reste sur ta machine. Tu la
+rouvres plus tard sans réseau, tu l'exportes en JSON, et un rapport
+`-scan-json` s'importe pour préparer ses signalements depuis l'interface.
 
 La même chose existe en ligne de commande.
 

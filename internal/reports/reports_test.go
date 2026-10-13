@@ -1,0 +1,216 @@
+// Copyright (c) 2026 Terry Passave. All rights reserved.
+// Proprietary and confidential. Unauthorized use is prohibited.
+
+package reports
+
+import (
+	"encoding/json"
+	"errors"
+	"os"
+	"path/filepath"
+	"runtime"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/terrypsv/Quaero/internal/finding"
+)
+
+func sample(cible string) *finding.Report {
+	rep := finding.NewReport(finding.Tool{Name: "quaero", Version: "test"}, "h", map[string]any{"cible": cible, "commit": strings.Repeat("b", 40)})
+	rep.Add(finding.Finding{ID: "QRO-SEMGREP-x-a-go-1", Title: "x", Severity: finding.SeverityHigh, Status: finding.StatusReview})
+	rep.Add(finding.Finding{ID: "QRO-SCAN-ABSENT-gosec", Title: "absent", Severity: finding.SeverityInfo, Status: finding.StatusReview})
+	rep.Finish()
+	return rep
+}
+
+func TestEnregistrerRelireEffacer(t *testing.T) {
+	s := &Store{Dir: filepath.Join(t.TempDir(), "rapports")}
+	e, err := s.Save(sample("github.com/a/b"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ValidID(e.ID) || e.Target != "github.com/a/b" || e.Findings != 1 || e.Commit == "" {
+		t.Errorf("resume %+v", e)
+	}
+	if runtime.GOOS != "windows" {
+		if info, err := os.Stat(filepath.Join(s.Dir, e.ID+".json")); err != nil || info.Mode().Perm() != 0o600 {
+			t.Errorf("droits du rapport: %v %v", info.Mode().Perm(), err)
+		}
+	}
+	rep, err := s.Load(e.ID)
+	if err != nil || len(rep.Findings) != 2 {
+		t.Fatalf("relecture: %v", err)
+	}
+	time.Sleep(1100 * time.Millisecond)
+	e2, _ := s.Save(sample("/home/moi/projet"))
+	list, err := s.List()
+	if err != nil || len(list) != 2 || list[0].ID != e2.ID {
+		t.Errorf("liste %+v, %v", list, err)
+	}
+	if err := s.Delete(e.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Load(e.ID); !errors.Is(err, ErrNotFound) {
+		t.Errorf("rapport efface encore lisible: %v", err)
+	}
+}
+
+// Seuls les noms tires par Quaero touchent au disque.
+func TestNomsRefuses(t *testing.T) {
+	s := &Store{Dir: t.TempDir()}
+	for _, id := range []string{"", "../config", "..", "a/b", `a\b`, "20261012-153200-abcdef01234", "20261012-153200-abcdef012345.json", "x"} {
+		if ValidID(id) {
+			t.Errorf("%q accepte", id)
+		}
+		if _, err := s.Load(id); !errors.Is(err, ErrNotFound) {
+			t.Errorf("Load(%q): %v", id, err)
+		}
+		if err := s.Delete(id); !errors.Is(err, ErrNotFound) {
+			t.Errorf("Delete(%q): %v", id, err)
+		}
+	}
+}
+
+func TestImport(t *testing.T) {
+	s := &Store{Dir: t.TempDir()}
+	data, _ := json.Marshal(sample("github.com/a/b"))
+	e, err := s.Import(data)
+	if err != nil || e.Target != "github.com/a/b" {
+		t.Fatalf("import: %+v %v", e, err)
+	}
+	for name, bad := range map[string]string{
+		"pas du json":       "bonjour",
+		"autre schema":      `{"schema_version":"2.0","tool":{"name":"x"},"findings":[]}`,
+		"sans outil":        `{"schema_version":"1.0","tool":{"name":""},"findings":[]}`,
+		"sans constats":     `{"schema_version":"1.0","tool":{"name":"x"}}`,
+		"tableau a la base": `[]`,
+	} {
+		if _, err := s.Import([]byte(bad)); !errors.Is(err, ErrInvalid) {
+			t.Errorf("%s: %v, attendu un refus", name, err)
+		}
+	}
+}
+
+// Le nom du fichier ne vient jamais du rapport importe.
+func TestImportNomTire(t *testing.T) {
+	s := &Store{Dir: t.TempDir()}
+	rep := sample("x")
+	rep.Run.ID = "../../evade"
+	data, _ := json.Marshal(rep)
+	e, err := s.Import(data)
+	if err != nil || !ValidID(e.ID) || strings.Contains(e.ID, "evade") {
+		t.Errorf("import: %+v %v", e, err)
+	}
+	files, _ := os.ReadDir(s.Dir)
+	if len(files) != 1 {
+		t.Errorf("%d fichiers ecrits", len(files))
+	}
+}
+
+func TestListeDossierAbsent(t *testing.T) {
+	list, err := (&Store{Dir: filepath.Join(t.TempDir(), "absent")}).List()
+	if err != nil || len(list) != 0 {
+		t.Errorf("liste %v, %v", list, err)
+	}
+}
+
+// La liste compte comme la page: une dependance avec plusieurs vulnerabilites
+// publiees ne compte qu'une fois.
+func TestCompteCommeLaPage(t *testing.T) {
+	dep := func(id, ident string) finding.Finding {
+		return finding.Finding{ID: id, Title: id, Severity: finding.SeverityHigh, Status: finding.StatusReview,
+			Target: &finding.Target{Type: "dependency", Identifier: ident}}
+	}
+	list := []finding.Finding{
+		{ID: "QRO-SEMGREP-x-a-go-1", Title: "x", Severity: finding.SeverityHigh, Status: finding.StatusReview},
+		dep("GHSA-1", "golang.org/x/net@0.35.0"),
+		dep("GHSA-2", "golang.org/x/net@0.36.0"),
+		dep("GHSA-3", "golang.org/x/crypto@0.33.0"),
+		{ID: "QRO-VULN-GO-1", Title: "y", Severity: finding.SeverityHigh, Status: finding.StatusReview,
+			Target:     &finding.Target{Type: "code", Identifier: "golang.org/x/net@v0.35.0"},
+			References: []finding.Reference{{Framework: "OSV", ID: "GO-1"}}},
+	}
+	// Le symbole atteignable de x/net rejoint le paquet x/net, comme dans la page.
+	if n := shownCount(list); n != 3 {
+		t.Errorf("compte %d, attendu 3 (un constat de code, deux paquets)", n)
+	}
+}
+
+// Un rapport exporte puis reimporte n'est pas range deux fois.
+func TestImportSansDoublon(t *testing.T) {
+	s := &Store{Dir: t.TempDir()}
+	saved, err := s.Save(sample("github.com/a/b"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	rep, _ := s.Load(saved.ID)
+	data, _ := json.Marshal(rep)
+	again, err := s.Import(data)
+	if err != nil || again.ID != saved.ID {
+		t.Errorf("reimport: %+v %v, attendu %s", again, err, saved.ID)
+	}
+	other := sample("github.com/a/b")
+	other.Run.FinishedAt = rep.Run.FinishedAt
+	data, _ = json.Marshal(other)
+	if e, err := s.Import(data); err != nil || e.ID == saved.ID {
+		t.Errorf("une autre analyse de la meme seconde doit etre rangee a part: %+v %v", e, err)
+	}
+	files, _ := os.ReadDir(s.Dir)
+	if len(files) != 2 {
+		t.Errorf("%d fichiers, attendu 2", len(files))
+	}
+}
+
+// Un rapport que Load ne saurait pas relire n'est pas ecrit.
+func TestTropGrosPasEcrit(t *testing.T) {
+	s := &Store{Dir: t.TempDir()}
+	rep := sample("x")
+	for i := 0; i < maxFindings; i++ {
+		rep.Findings = append(rep.Findings, finding.Finding{ID: "f", Title: "t"})
+	}
+	if _, err := s.Save(rep); !errors.Is(err, ErrTooBig) {
+		t.Errorf("Save: %v, attendu ErrTooBig", err)
+	}
+	files, _ := os.ReadDir(s.Dir)
+	if len(files) != 0 {
+		t.Errorf("%d fichiers ecrits", len(files))
+	}
+}
+
+// Un contexte demesure est refuse avant le decodage complet.
+func TestContexteBorne(t *testing.T) {
+	big := `{"schema_version":"1.0","tool":{"name":"x"},"findings":[],"run":{"context":{"k":[` + strings.Repeat("[],", maxContextBytes/3) + `[]]}}}`
+	if _, err := Parse([]byte(big)); !errors.Is(err, ErrInvalid) {
+		t.Errorf("contexte enorme: %v, attendu un refus", err)
+	}
+}
+
+// La date d'un rapport importe ne choisit ni son nom ni sa place: le dernier
+// range passe en tete, meme date de l'an 9999.
+func TestImportDateLibre(t *testing.T) {
+	s := &Store{Dir: t.TempDir()}
+	futur := sample("futur")
+	futur.Run.FinishedAt = time.Date(9999, 12, 31, 23, 59, 59, 0, time.FixedZone("x", -(23*3600+59*60)))
+	data, _ := json.Marshal(futur)
+	e, err := s.Import(data)
+	if err != nil || !ValidID(e.ID) {
+		t.Fatalf("import: %+v %v", e, err)
+	}
+	if _, err := s.Load(e.ID); err != nil {
+		t.Errorf("rapport importe illisible: %v", err)
+	}
+	time.Sleep(1100 * time.Millisecond)
+	recent, _ := s.Save(sample("recent"))
+	list, _ := s.List()
+	if len(list) != 2 || list[0].ID != recent.ID {
+		t.Errorf("le dernier range doit venir en tete: %+v", list)
+	}
+}
+
+func TestSuppressionAbsente(t *testing.T) {
+	s := &Store{Dir: t.TempDir()}
+	if err := s.Delete("20261012-153200-abcdef012345"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("Delete d'un absent: %v", err)
+	}
+}

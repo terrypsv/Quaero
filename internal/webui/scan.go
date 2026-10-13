@@ -35,8 +35,9 @@ import (
 //     pas mise en file: lancer n'est jamais un effet de bord;
 //   - les routes qui lancent ou annulent n'acceptent que POST, derriere le
 //     garde de session et le controle d'origine (guard.go);
-//   - le rapport et le brouillon restent en memoire, dans ce processus. Rien
-//     n'est envoye: le signalement se depose a la main.
+//   - le rapport et le brouillon restent en memoire, dans ce processus. Le
+//     rapport n'est garde sur la machine que si l'utilisateur l'enregistre
+//     (reports.go). Rien n'est envoye: le signalement se depose a la main.
 
 // Etapes annoncees par une ScanFunc pendant son travail.
 const (
@@ -149,6 +150,9 @@ type scanJob struct {
 	err       string
 	errCode   string
 	report    *finding.Report
+	savedID   string
+	saveErr   string
+	saving    bool
 	cancel    context.CancelFunc
 	done      chan struct{}
 }
@@ -187,6 +191,12 @@ type scanView struct {
 	// Reportable liste les constats qui peuvent devenir un signalement: ceux
 	// du code et des dependances, pas ceux sur le scan lui-meme.
 	Reportable []string `json:"reportable,omitempty"`
+	// Saved nomme le rapport enregistre sur la machine a la demande de
+	// l'utilisateur, SaveError dit pourquoi il ne l'a pas ete.
+	Saved     string `json:"saved_id,omitempty"`
+	SaveError string `json:"save_error,omitempty"`
+	// SavedAt date un rapport rouvert.
+	SavedAt *time.Time `json:"saved_at,omitempty"`
 }
 
 // view lit j sous le verrou de scanJobs.
@@ -214,13 +224,23 @@ func (j *scanJob) view(now time.Time) scanView {
 	}
 	if j.report != nil {
 		v.Result = j.report
-		v.Reportable = []string{}
-		for _, f := range advisory.Candidates(j.report) {
-			v.Reportable = append(v.Reportable, f.ID)
-		}
+		v.Reportable = reportableIDs(j.report)
 	}
+	v.Saved, v.SaveError = j.savedID, j.saveErr
 	return v
 }
+
+func reportableIDs(rep *finding.Report) []string {
+	ids := []string{}
+	for _, f := range advisory.Candidates(rep) {
+		ids = append(ids, f.ID)
+	}
+	return ids
+}
+
+// savedPrefix distingue un rapport rouvert d'une analyse dans les identifiants
+// que la page renvoie.
+const savedPrefix = "r:"
 
 // start lance une analyse si aucune ne tourne. Elle rend l'analyse lancee, ou
 // celle qui tourne deja et false, ou errClosing si Quaero s'arrete.
@@ -440,7 +460,7 @@ func (s *Server) handleScanCancel(w http.ResponseWriter, r *http.Request) {
 var draftFileRe = regexp.MustCompile(`[^A-Za-z0-9._-]+`)
 
 // handleScanAdvisory rend le brouillon de signalement d'un constat de la
-// derniere analyse. Il ne fait que lire le rapport en memoire.
+// derniere analyse ou d'un rapport enregistre. Il ne fait que lire le rapport.
 func (s *Server) handleScanAdvisory(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet && r.Method != http.MethodHead {
 		w.Header().Set("Allow", "GET, HEAD")
@@ -448,7 +468,7 @@ func (s *Server) handleScanAdvisory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	q := r.URL.Query()
-	rep, ok := s.scans.report(q.Get("id"))
+	rep, ok := s.reportFor(q.Get("id"))
 	if !ok {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "aucun rapport pour cette analyse, relancer l'analyse"})
 		return

@@ -21,6 +21,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 	"unicode"
 
@@ -28,6 +29,7 @@ import (
 	"github.com/terrypsv/Quaero/internal/intent"
 	"github.com/terrypsv/Quaero/internal/model"
 	"github.com/terrypsv/Quaero/internal/rank"
+	"github.com/terrypsv/Quaero/internal/reports"
 )
 
 //go:embed index.html
@@ -90,9 +92,14 @@ type Server struct {
 	// ScanTimeout est le delai accorde a chaque moteur d'une analyse, affiche
 	// dans l'onglet audit. Zero, la page ne l'affiche pas.
 	ScanTimeout time.Duration
+	// Reports garde les rapports d'analyse que l'utilisateur enregistre (voir
+	// reports.go). Nil, la page ne propose ni de les enregistrer ni de les
+	// rouvrir.
+	Reports *reports.Store
 
-	cache *searchCache
-	scans *scanJobs
+	cache     *searchCache
+	scans     *scanJobs
+	importing atomic.Bool
 }
 
 // Pages are kept ten minutes: long enough to re-sort, page back and forth or
@@ -121,6 +128,11 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/scan", s.handleScan)
 	mux.HandleFunc("/api/scan/cancel", s.handleScanCancel)
 	mux.HandleFunc("/api/scan/advisory", s.handleScanAdvisory)
+	mux.HandleFunc("/api/scan/save", s.handleScanSave)
+	mux.HandleFunc("/api/reports", s.handleReports)
+	mux.HandleFunc("/api/reports/view", s.handleReportView)
+	mux.HandleFunc("/api/reports/import", s.handleReportImport)
+	mux.HandleFunc("/api/reports/delete", s.handleReportDelete)
 	mux.HandleFunc("/fonts/", s.handleFont)
 	return guard{token: s.Token, allowed: allowedHosts(s.Addr), next: mux}
 }
