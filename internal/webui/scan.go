@@ -247,7 +247,7 @@ const savedPrefix = "r:"
 // start lance une analyse si aucune ne tourne. Elle rend l'analyse lancee, ou
 // celle qui tourne deja et false, ou errClosing si Quaero s'arrete.
 // keep, s'il n'est pas nil, recoit le rapport des la fin de l'analyse: c'est
-// la case « enregistrer le rapport » cochee avant de lancer.
+// la case « Enregistrer le rapport » cochee avant de lancer.
 func (s *scanJobs) start(scan ScanFunc, t ScanTarget, keep *reports.Store) (*scanJob, bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -438,7 +438,7 @@ func (s *Server) handleScan(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error(), "code": targetErrorCode(err)})
 			return
 		}
-		// La case « enregistrer le rapport » de la page: rien n'est garde sans
+		// La case « Enregistrer le rapport » de la page: rien n'est garde sans
 		// elle, ou sans le bouton « enregistrer » une fois l'analyse finie.
 		var keep *reports.Store
 		if r.PostForm.Get("enregistrer") == "1" {
