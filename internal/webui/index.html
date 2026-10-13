@@ -274,7 +274,12 @@
   .rapports-liste .r-date { color: var(--gris); font-variant-numeric: tabular-nums; }
   .rapports-liste code { overflow-wrap: anywhere; }
   .rapports-liste .lien { font-size: 13px; }
+  .rapports-liste .ligne { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; padding: 0; border: 0; background: none; font: inherit; color: inherit; text-align: left; cursor: pointer; }
+  .rapports-liste .ligne code { text-decoration: underline; text-underline-offset: 4px; }
+  .rapports-liste li:hover { background: var(--blanc); }
+  .rapports-liste li.on:hover { background: var(--acide); }
   .rapport-actions { margin-top: 12px; }
+  .rapport-rouvert { display: inline-block; margin: 0 0 10px; padding: 2px 10px; background: var(--encre); color: var(--acide); font-size: 12px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
   #rapports-msg { margin: 10px 0; }
 
   .pied { flex-shrink: 0; background: var(--encre); color: var(--papier); border-top: 6px solid var(--acide); }
@@ -1339,7 +1344,7 @@ var audit = {
   available: true, job: null, notice: null, timer: null, misses: 0, drafts: {},
   limits: null, onTab: false,
   // view est un rapport enregistre rouvert, montre a la place de l'analyse.
-  view: null, reports: [], reportsDir: "", reportsOn: false,
+  view: null, viewNote: "", reports: [], reportsDir: "", reportsOn: false,
   filter: { sev: "toutes", kind: "tout" }
 };
 
@@ -1603,7 +1608,6 @@ function renderAudit() {
   }
   if ($("annuler")) $("annuler").onclick = cancelScan;
   bindAudit($("audit"));
-  bind("#audit [data-export]", exportReport);
   bind("#audit [data-save-report]", saveScanReport);
   bind("#audit [data-close-view]", function () { setView(null); });
 }
@@ -1731,21 +1735,23 @@ function auditResult(job) {
   var where = job.url
     ? '<a href="' + esc(job.url) + '" target="_blank" rel="noopener">' + esc(job.repo) + "</a>"
     : "<code>" + esc(job.repo) + "</code>";
-  var h = '<div class="bandeau"><h2>' + n + (n > 1 ? " constats" : " constat") + "<small>" + where
-        + (ctx.commit ? ", commit " + esc(String(ctx.commit).slice(0, 7)) : "")
-        + ", " + duration(job.elapsed_s) + "</small></h2></div>";
+  // Un rapport rouvert se signale avant tout le reste: rien ne doit le faire
+  // passer pour l'analyse qui vient de finir.
+  var h = audit.view ? '<p class="rapport-rouvert">' + esc((audit.viewNote || "rapport enregistré")
+        + (job.saved_at ? ", analyse du " + frDate(job.saved_at) : "")) + "</p>" : "";
+  h += '<div class="bandeau"><h2>' + n + (n > 1 ? " constats" : " constat") + "<small>" + where
+     + (ctx.commit ? ", commit " + esc(String(ctx.commit).slice(0, 7)) : "")
+     + ", " + duration(job.elapsed_s) + "</small></h2></div>";
   // Rien n'est garde sans le demander: l'analyse reste en memoire jusqu'a la
   // suivante, « enregistrer » la range avec les autres rapports.
-  var state = "", save = "";
-  if (job.saved_at) state = "rapport du " + frDate(job.saved_at);
-  else if (job.saved_id) state = "rapport enregistré";
+  var act = "";
+  if (audit.view) act = '<button type="button" class="choix" data-close-view="1">fermer</button>';
+  else if (job.saved_id) act = '<span class="base">enregistré</span>';
   else if (audit.reportsOn) {
-    state = job.save_error ? "non enregistré, " + job.save_error : "non enregistré, oublié à la prochaine analyse";
-    save = '<button type="button" class="choix" data-save-report="1">enregistrer</button>';
+    act = (job.save_error ? '<span class="base">' + esc("non enregistré, " + job.save_error) + "</span>" : "")
+        + '<button type="button" class="choix" data-save-report="1">enregistrer</button>';
   }
-  h += '<div class="actions rapport-actions">' + (state ? '<span class="base">' + esc(state) + "</span>" : "") + save
-     + '<button type="button" class="choix" data-export="1">exporter .json</button>'
-     + (audit.view ? '<button type="button" class="choix" data-close-view="1">fermer ce rapport</button>' : "") + "</div>";
+  if (act) h += '<div class="actions rapport-actions">' + act + "</div>";
   h += eng.html;
   if (!eng.ok) {
     return h + '<p class="erreur"><b>rien vérifié</b>' + (eng.failed
@@ -1861,8 +1867,8 @@ function download(text, name, type) {
 
 // ---- rapports enregistres ------------------------------------------------------
 
-// Chaque analyse finie est gardee sur la machine. La liste, la relecture, les
-// brouillons et l'export marchent sans reseau.
+// Une analyse enregistree est gardee sur la machine. La liste, la relecture et
+// les brouillons marchent sans reseau, tant que Quaero tourne.
 function frDate(iso) {
   var d = new Date(iso);
   if (isNaN(d.getTime())) return "";
@@ -1887,23 +1893,24 @@ function renderReports() {
   var open = audit.view ? audit.view.saved_id : "", h = "";
   audit.reports.forEach(function (r) {
     var n = Number(r.constats) || 0;
-    h += "<li" + (r.id === open ? ' class="on"' : "") + '><span class="r-date">' + esc(frDate(r.date)) + "</span>"
-       + "<code>" + esc(r.cible || "?") + "</code><span>" + n + (n > 1 ? " constats" : " constat") + "</span>"
-       + '<button type="button" class="lien" data-open-report="' + esc(r.id) + '">ouvrir</button>'
+    h += "<li" + (r.id === open ? ' class="on"' : "") + '><button type="button" class="ligne" title="ouvrir" data-open-report="' + esc(r.id) + '">'
+       + '<span class="r-date">' + esc(frDate(r.date)) + "</span><code>" + esc(r.cible || "?") + "</code><span>"
+       + n + (n > 1 ? " constats" : " constat") + "</span></button>"
        + '<button type="button" class="lien" data-del-report="' + esc(r.id) + '">supprimer</button></li>';
   });
-  $("rapports-liste").innerHTML = h || '<li class="base">Aucun rapport pour l\'instant. Après une analyse, « enregistrer » la garde ici.</li>';
+  $("rapports-liste").innerHTML = h || '<li class="base">Aucun rapport. Après une analyse, « enregistrer » la garde ici.</li>';
   $("rapports-dossier").textContent = audit.reportsDir ? "Gardés sur ta machine, dans " + audit.reportsDir + ", et nulle part ailleurs." : "";
   bind("#rapports-liste [data-open-report]", function (b) { openReport(b.getAttribute("data-open-report")); });
   bind("#rapports-liste [data-del-report]", function (b) { deleteReport(b.getAttribute("data-del-report")); });
 }
 
-function setView(view) {
+function setView(view, note) {
   if (!view || !audit.view || view.id !== audit.view.id) {
     audit.drafts = {};
     audit.filter = { sev: "toutes", kind: "tout" };
   }
   audit.view = view;
+  audit.viewNote = view ? note || "" : "";
   audit.notice = null;
   renderAudit();
   renderReports();
@@ -1919,11 +1926,11 @@ function panelMsg(title, text) {
 
 function panelFail(err) { panelMsg(failTitle(err), failText(err)); }
 
-function openReport(id) {
+function openReport(id, note) {
   api("GET", "/api/reports/view?id=" + encodeURIComponent(id)).then(function (d) {
     if (d.status !== 200 || !d.view) { panelMsg("rapport introuvable", "Il a peut-être été effacé du dossier."); loadReports(); return; }
     panelMsg();
-    setView(d.view);
+    setView(d.view, note);
     $("audit").scrollIntoView({ block: "start" });
   }).catch(panelFail);
 }
@@ -1935,6 +1942,8 @@ function deleteReport(id) {
     if (d.status !== 200 && d.status !== 404) { panelMsg("suppression impossible", d.error || String(d.status)); return; }
     panelMsg();
     if (audit.view && audit.view.saved_id === id) setView(null);
+    // L'analyse dont le rapport vient d'etre efface redevient a enregistrer.
+    if (audit.job && audit.job.saved_id === id) loadScan();
   }).catch(panelFail);
 }
 
@@ -1971,16 +1980,9 @@ function importReport(file) {
       return;
     }
     loadReports();
-    openReport(d.report.id);
+    openReport(d.report.id, "rapport importé");
   }).catch(panelFail)
     .then(function () { $("fichier-rapport").value = ""; });
-}
-
-function exportReport() {
-  var v = shown();
-  if (!v || !v.report) return;
-  var name = (v.repo || "rapport").replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60) || "rapport";
-  download(JSON.stringify(v.report, null, 2) + "\n", "quaero-" + name + ".json", "application/json");
 }
 
 init();

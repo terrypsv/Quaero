@@ -186,8 +186,8 @@ func TestContexteBorne(t *testing.T) {
 	}
 }
 
-// La date d'un rapport importe ne choisit ni son nom ni sa place: le dernier
-// range passe en tete, meme date de l'an 9999.
+// La date d'un rapport importe ne choisit pas son nom, et une date future ne le
+// garde pas en tete: il ne passe pas devant une analyse rangee apres lui.
 func TestImportDateLibre(t *testing.T) {
 	s := &Store{Dir: t.TempDir()}
 	futur := sample("futur")
@@ -205,6 +205,25 @@ func TestImportDateLibre(t *testing.T) {
 	list, _ := s.List()
 	if len(list) != 2 || list[0].ID != recent.ID {
 		t.Errorf("le dernier range doit venir en tete: %+v", list)
+	}
+}
+
+// La liste suit la date des analyses: un vieux rapport importe apres coup se
+// range a sa date, sous les analyses plus recentes.
+func TestListeParDateDAnalyse(t *testing.T) {
+	s := &Store{Dir: t.TempDir()}
+	recent, _ := s.Save(sample("recent"))
+	vieux := sample("vieux")
+	vieux.Run.StartedAt = time.Date(2025, 3, 1, 10, 0, 0, 0, time.UTC)
+	vieux.Run.FinishedAt = vieux.Run.StartedAt.Add(time.Minute)
+	data, _ := json.Marshal(vieux)
+	time.Sleep(1100 * time.Millisecond)
+	if _, err := s.Import(data); err != nil {
+		t.Fatal(err)
+	}
+	list, _ := s.List()
+	if len(list) != 2 || list[0].ID != recent.ID || list[1].Target != "vieux" {
+		t.Errorf("ordre %+v", list)
 	}
 }
 

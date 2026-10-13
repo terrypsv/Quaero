@@ -134,9 +134,9 @@ lecture: Quaero analyse, il n'exploite rien.
 Trier vite et bien ce que les moteurs relèvent, puis préparer le signalement
 de ce qui tient.
 
-- [x] Rapports enregistrés sur la machine, rouverts sans réseau, importés
-      depuis un fichier `-scan-json`, exportés en JSON. Le brouillon de
-      signalement se prépare depuis n'importe quel rapport
+- [x] Rapports enregistrés au choix sur la machine, rouverts sans réseau,
+      importés depuis un fichier `-scan-json`. Le brouillon de signalement se
+      prépare depuis n'importe quel rapport
 - [ ] Tri des constats sans modèle de langage, avec des états gardés d'une
       analyse à l'autre (à vérifier, faux positif, confirmé, signalé) et un
       pré-tri par règles (tests, exemples, code généré, CI, atteignabilité)

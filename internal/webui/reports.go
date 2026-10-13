@@ -58,6 +58,16 @@ func (s *scanJobs) save(id string, store *reports.Store) (scanView, error) {
 	return job.view(time.Now()), nil
 }
 
+// forget retire le lien entre l'analyse courante et le rapport id, efface:
+// elle redevient a enregistrer.
+func (s *scanJobs) forget(id string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.cur != nil && id != "" && s.cur.savedID == id {
+		s.cur.savedID = ""
+	}
+}
+
 // handleScanSave enregistre, a la demande, le rapport de la derniere analyse.
 func (s *Server) handleScanSave(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -221,7 +231,11 @@ func (s *Server) handleReportDelete(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": reports.ErrNotFound.Error()})
 		return
 	}
-	err := s.Reports.Delete(r.PostForm.Get("id"))
+	id := r.PostForm.Get("id")
+	err := s.Reports.Delete(id)
+	if err == nil || errors.Is(err, reports.ErrNotFound) {
+		s.scans.forget(id)
+	}
 	if errors.Is(err, reports.ErrNotFound) {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
 		return
