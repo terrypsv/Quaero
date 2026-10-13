@@ -60,10 +60,10 @@ go install github.com/securego/gosec/v2/cmd/gosec@latest
 L'interface a deux onglets. **rechercher** trouve des dépôts, les classe et
 aide à resserrer une liste trop longue. **auditer** analyse un dépôt GitHub ou
 un dossier de ta machine, filtre les constats par gravité et prépare les
-signalements. Une analyse que tu enregistres reste sur ta machine et se
-rouvre plus tard sans réseau. Un rapport `-scan-json` s'importe, ou se dépose
-sur la page, pour préparer ses signalements depuis l'interface. Relancer
-Quaero reprend l'onglet déjà ouvert.
+signalements. Coche « enregistrer le rapport » avant de lancer, l'analyse
+reste sur ta machine et se rouvre plus tard sans réseau. Un rapport
+`-scan-json` s'importe, ou se dépose sur la page, pour préparer ses
+signalements depuis l'interface. Relancer Quaero reprend l'onglet déjà ouvert.
 
 La même chose existe en ligne de commande.
 
@@ -71,34 +71,8 @@ La même chose existe en ligne de commande.
 quaero -scan owner/repo                      audite un dépôt GitHub
 quaero -scan C:\chemin\du\projet             audite un dossier
 quaero -scan owner/repo -scan-json r.json    garde le rapport
-quaero -scan owner/repo -scan-timeout 30m    délai maximal par moteur (15 min par défaut)
 quaero -advisory r.json -finding <id>        prépare un brouillon de signalement
-quaero -advisory r.json -finding <id> -advisory-out brouillon.md
-                                             écrit le brouillon dans un fichier
 ```
-
-`-audit` note d'un coup la santé des dépôts trouvés pour une phrase, sans
-ouvrir l'interface. `-audit-limit` fixe leur nombre (30 par défaut) et
-`-audit-json` écrit le rapport au schéma de constat partagé, lisible par Acta.
-Un dépôt abandonné ou archivé ressort en échec (`fail`), un dépôt dormant ou
-sans licence est à vérifier (`review`), les autres passent.
-
-```text
-quaero -audit "scanner de ports en go"                    note 30 dépôts
-quaero -audit "scanner de ports en go" -audit-limit 10 -audit-json sante.json
-```
-
-**Autres options.** `-addr` change l'adresse d'écoute (127.0.0.1:7777 par
-défaut), `-no-browser` n'ouvre pas le navigateur, `-forget-token` oublie le
-jeton enregistré, `-version` affiche la version. `quaero -h` donne la liste
-complète.
-
-**Codes de sortie.** `0` quand la commande va au bout, `2` en cas d'erreur ou
-d'interruption. `-audit` rend `1` si au moins un dépôt est en échec. `-scan`
-ne rend jamais `1`, même quand il relève des failles possibles. Tous ses
-constats sortent à vérifier (`review`), parce qu'un outil d'analyse propose
-des candidats et ne confirme rien. C'est le rapport qu'il faut lire, pas le
-code de sortie.
 
 ## Dépôts privés
 
