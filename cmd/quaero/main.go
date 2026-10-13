@@ -18,6 +18,7 @@ import (
 
 	"github.com/terrypsv/Quaero/internal/codescan"
 	"github.com/terrypsv/Quaero/internal/github"
+	"github.com/terrypsv/Quaero/internal/reports"
 	"github.com/terrypsv/Quaero/internal/webui"
 )
 
@@ -106,6 +107,13 @@ func main() {
 		os.Exit(2)
 	}
 	server := &webui.Server{Client: client, Version: version, Addr: *addr, Token: session, Scan: webScan(client.Token), ScanTimeout: codescan.DefaultTimeout}
+	// Les analyses lancees depuis l'interface sont gardees sur la machine, dans
+	// le dossier de l'utilisateur, pour les rouvrir sans reseau. Quand Quaero
+	// ecoute sur toutes les interfaces, elles ne sont ni gardees ni servies,
+	// comme les dossiers locaux: elles peuvent citer du code prive.
+	if dir, err := reports.DefaultDir(); err == nil && !webui.ListensEverywhere(*addr) {
+		server.Reports = &reports.Store{Dir: dir}
+	}
 	httpServer := &http.Server{
 		Addr:              *addr,
 		Handler:           server.Handler(),

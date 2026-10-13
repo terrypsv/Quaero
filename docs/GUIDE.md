@@ -212,6 +212,7 @@ l'accompagne. Son en-tête `Origin`, lui, la trahit, et la requête est refusée
 
 Écouter sur toutes les interfaces (`-addr 0.0.0.0:7777`) désactive le contrôle
 de `Host`. Seul le jeton protège alors l'interface, et le terminal le signale.
+Les dossiers locaux et les rapports enregistrés sont alors fermés.
 
 ## Ce que la phrase peut exprimer
 
@@ -515,8 +516,31 @@ Lancer reste un geste à part.
   du formulaire de signalement privé du dépôt sur GitHub. Ce formulaire
   n'existe que si le mainteneur l'a activé, sinon `SECURITY.md` dit où écrire.
 
-Le rapport et les brouillons restent en mémoire, dans le processus, jusqu'à la
-prochaine analyse. Rien n'est envoyé.
+### Rapports enregistrés
+
+Chaque analyse finie est enregistrée dans `~/.quaero/rapports`, soit
+`%USERPROFILE%\.quaero\rapports` sous Windows. Un fichier JSON par analyse, au
+même format que `-scan-json`. Sous Linux et macOS, le dossier et les fichiers
+ne sont lisibles que par toi. Une analyse annulée ou en échec n'écrit rien.
+Quand Quaero écoute sur toutes les interfaces (`-addr 0.0.0.0:7777`), les
+rapports ne sont ni gardés ni servis, comme les dossiers locaux. Ils peuvent
+citer du code privé.
+
+- « rapports enregistrés », sous le champ, les liste du dernier rangé au plus
+  ancien, avec la date de l'analyse, sa cible et son nombre de constats.
+- « ouvrir » rouvre un rapport sans réseau ni nouvelle analyse. Les filtres et
+  « préparer le signalement » marchent comme après une analyse.
+- « supprimer » efface le fichier, après confirmation.
+- « importer un rapport » range un fichier écrit par `-scan-json`, sur cette
+  machine ou une autre, jusqu'à 20 Mo et 50 000 constats. Seul son format est
+  vérifié, son contenu reste une donnée affichée. Le même rapport importé deux
+  fois n'est rangé qu'une fois.
+- « exporter .json » enregistre le rapport affiché, pour le garder ailleurs ou
+  le relire avec `-advisory`.
+
+Un rapport décrit des failles pas encore corrigées. Garde-le en privé, comme
+les brouillons. Ceux-ci se préparent à la demande, en mémoire, et ne sont pas
+enregistrés. Rien n'est envoyé.
 
 ## Structure
 
@@ -527,6 +551,7 @@ internal/rank/      pertinence et santé, deux jugements distincts
 internal/audit/     santé des dépôts d'une requête, vers le schéma de constat
 internal/codescan/  audit de code (govulncheck, gosec, semgrep, osv-scanner)
 internal/advisory/  brouillon de signalement privé à partir d'un constat
+internal/reports/   rapports enregistrés sur la machine, import et relecture
 internal/repo/      lecture des références de dépôt GitHub, partagée
 internal/proctree/  arrêt d'un processus et de tout ce qu'il a lancé
 internal/finding/   schéma de constat partagé par la suite
