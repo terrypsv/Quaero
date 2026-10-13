@@ -83,6 +83,13 @@ func TestAnalyseEnregistreeEtRouverte(t *testing.T) {
 	if again := decode(t, get(h, "/api/scan")).Job; again.Saved != job.Saved {
 		t.Errorf("l'analyse ne dit pas qu'elle est enregistree: %+v", again)
 	}
+	defer func() {
+		// Son rapport efface, l'analyse redevient a enregistrer.
+		post(h, "/api/reports/delete", url.Values{"id": {job.Saved}}, ourOrigin)
+		if again := decode(t, get(h, "/api/scan")).Job; again.Saved != "" {
+			t.Errorf("analyse dite enregistree apres suppression de son rapport: %+v", again)
+		}
+	}()
 	list := listOf(t, h)
 	if !list.Available || len(list.Reports) != 1 || list.Reports[0].ID != job.Saved || list.Reports[0].Findings != 1 {
 		t.Fatalf("liste %+v", list)

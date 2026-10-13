@@ -527,17 +527,19 @@ Quand Quaero écoute sur toutes les interfaces (`-addr 0.0.0.0:7777`), les
 rapports ne sont ni gardés ni servis, comme les dossiers locaux. Ils peuvent
 citer du code privé.
 
-- « rapports enregistrés », sous le champ, les liste du dernier rangé au plus
-  ancien, avec la date de l'analyse, sa cible et son nombre de constats.
-- « ouvrir » rouvre un rapport sans réseau ni nouvelle analyse. Les filtres et
-  « préparer le signalement » marchent comme après une analyse.
+- « rapports enregistrés », sous le champ, les liste de l'analyse la plus
+  récente à la plus ancienne, avec sa date, sa cible et son nombre de
+  constats.
+- Un clic sur une ligne rouvre le rapport, sans réseau ni nouvelle analyse.
+  Une étiquette au-dessus du titre le distingue de l'analyse en cours, et
+  « fermer » y revient. Les filtres et « préparer le signalement » marchent
+  comme après une analyse.
 - « supprimer » efface le fichier, après confirmation.
 - « importer un rapport » range un fichier écrit par `-scan-json`, sur cette
   machine ou une autre, jusqu'à 20 Mo et 50 000 constats. Seul son format est
   vérifié, son contenu reste une donnée affichée. Le même rapport importé deux
   fois n'est rangé qu'une fois.
-- « exporter .json » enregistre le rapport affiché, pour le garder ailleurs ou
-  le relire avec `-advisory`.
+- Le fichier d'un rapport enregistré se relit tel quel avec `-advisory`.
 
 Un rapport décrit des failles pas encore corrigées. Garde-le en privé, comme
 les brouillons. Ceux-ci se préparent à la demande, en mémoire, et ne sont pas

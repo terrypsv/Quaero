@@ -258,8 +258,8 @@ func (s *Store) Delete(id string) error {
 	return err
 }
 
-// List rend les rapports enregistres, les derniers ranges d'abord. Un fichier
-// illisible est ignore plutot que de cacher les autres.
+// List rend les rapports enregistres, de l'analyse la plus recente a la plus
+// ancienne. Un fichier illisible est ignore plutot que de cacher les autres.
 func (s *Store) List() ([]Entry, error) {
 	ids, err := s.ids()
 	if err != nil {
@@ -271,7 +271,25 @@ func (s *Store) List() ([]Entry, error) {
 			out = append(out, c.entry)
 		}
 	}
+	sort.SliceStable(out, func(i, j int) bool {
+		a, b := sortKey(out[i]), sortKey(out[j])
+		if !a.Equal(b) {
+			return a.After(b)
+		}
+		return out[i].ID > out[j].ID
+	})
 	return out, nil
+}
+
+// sortKey date un rapport pour la liste: la fin de son analyse, sans depasser
+// le moment ou il a ete range. Un rapport importe date du futur ne reste pas
+// en tete pour toujours.
+func sortKey(e Entry) time.Time {
+	saved, err := time.Parse("20060102-150405", e.ID[:15])
+	if err != nil || (!e.Date.IsZero() && e.Date.Before(saved)) {
+		return e.Date
+	}
+	return saved
 }
 
 // ids rend les noms valides du dossier, du plus recent au plus ancien. Le nom
