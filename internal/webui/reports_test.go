@@ -193,3 +193,27 @@ func TestRapportsIndisponibles(t *testing.T) {
 		t.Errorf("enregistrer sans dossier: %d", rec.Code)
 	}
 }
+
+// La case cochee avant de lancer garde le rapport des la fin de l'analyse,
+// sans autre geste.
+func TestEnregistrementChoisiAvant(t *testing.T) {
+	s, h, f := reportServer(t)
+	post(h, "/api/scan", url.Values{"cible": {"mushorg/cowrie"}, "enregistrer": {"1"}}, ourOrigin)
+	close(f.release)
+	wait(t, s)
+	job := decode(t, get(h, "/api/scan")).Job
+	if job.Saved == "" || job.SaveError != "" {
+		t.Fatalf("rapport non garde malgre la case: %+v", job)
+	}
+	list := listOf(t, h)
+	if len(list.Reports) != 1 || list.Reports[0].ID != job.Saved {
+		t.Errorf("liste %+v", list)
+	}
+	// Le bouton apres coup ne range pas une seconde copie.
+	if again := decode(t, post(h, "/api/scan/save", url.Values{"id": {job.ID}}, ourOrigin)).Job; again == nil || again.Saved != job.Saved {
+		t.Errorf("bouton apres la case: %+v", again)
+	}
+	if n := len(listOf(t, h).Reports); n != 1 {
+		t.Errorf("%d rapports, attendu 1", n)
+	}
+}

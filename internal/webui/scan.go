@@ -20,6 +20,7 @@ import (
 	"github.com/terrypsv/Quaero/internal/advisory"
 	"github.com/terrypsv/Quaero/internal/finding"
 	"github.com/terrypsv/Quaero/internal/repo"
+	"github.com/terrypsv/Quaero/internal/reports"
 )
 
 // L'onglet audit lance l'analyse d'une cible nommee a la main. Les garde-fous
@@ -36,8 +37,9 @@ import (
 //   - les routes qui lancent ou annulent n'acceptent que POST, derriere le
 //     garde de session et le controle d'origine (guard.go);
 //   - le rapport et le brouillon restent en memoire, dans ce processus. Le
-//     rapport n'est garde sur la machine que si l'utilisateur l'enregistre
-//     (reports.go). Rien n'est envoye: le signalement se depose a la main.
+//     rapport n'est garde sur la machine que si l'utilisateur le demande, en
+//     cochant la case avant l'analyse ou par le bouton apres (reports.go).
+//     Rien n'est envoye: le signalement se depose a la main.
 
 // Etapes annoncees par une ScanFunc pendant son travail.
 const (
@@ -244,7 +246,9 @@ const savedPrefix = "r:"
 
 // start lance une analyse si aucune ne tourne. Elle rend l'analyse lancee, ou
 // celle qui tourne deja et false, ou errClosing si Quaero s'arrete.
-func (s *scanJobs) start(scan ScanFunc, t ScanTarget) (*scanJob, bool, error) {
+// keep, s'il n'est pas nil, recoit le rapport des la fin de l'analyse: c'est
+// la case « enregistrer le rapport » cochee avant de lancer.
+func (s *scanJobs) start(scan ScanFunc, t ScanTarget, keep *reports.Store) (*scanJob, bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.closed {
@@ -272,7 +276,20 @@ func (s *scanJobs) start(scan ScanFunc, t ScanTarget) (*scanJob, bool, error) {
 	go func() {
 		defer cancel()
 		rep, err := scan(ctx, t, func(stage string) { s.stage(job, stage) })
-		s.finish(job, rep, err, ctx.Err())
+		// Demande avant l'analyse, l'enregistrement se fait avant de la dire
+		// finie: fermer l'onglet entre-temps ne le perd pas. ctx.Err() est lu
+		// une fois, une annulation pendant l'ecriture ne laisse pas une analyse
+		// annulee avec un rapport garde.
+		ctxErr := ctx.Err()
+		var savedID, saveErr string
+		if keep != nil && err == nil && rep != nil && ctxErr == nil {
+			if e, serr := keep.Save(rep); serr != nil {
+				saveErr = serr.Error()
+			} else {
+				savedID = e.ID
+			}
+		}
+		s.finish(job, rep, err, ctxErr, savedID, saveErr)
 	}()
 	return job, true, nil
 }
@@ -287,10 +304,11 @@ func (s *scanJobs) stage(job *scanJob, stage string) {
 	}
 }
 
-func (s *scanJobs) finish(job *scanJob, rep *finding.Report, err, ctxErr error) {
+func (s *scanJobs) finish(job *scanJob, rep *finding.Report, err, ctxErr error, savedID, saveErr string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	job.ended = time.Now()
+	job.savedID, job.saveErr = savedID, saveErr
 	switch {
 	case ctxErr != nil:
 		// Une analyse annulee ne rend rien: un resultat partiel passerait pour
@@ -420,7 +438,13 @@ func (s *Server) handleScan(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error(), "code": targetErrorCode(err)})
 			return
 		}
-		job, started, err := s.scans.start(s.Scan, target)
+		// La case « enregistrer le rapport » de la page: rien n'est garde sans
+		// elle, ou sans le bouton « enregistrer » une fois l'analyse finie.
+		var keep *reports.Store
+		if r.PostForm.Get("enregistrer") == "1" {
+			keep = s.Reports
+		}
+		job, started, err := s.scans.start(s.Scan, target, keep)
 		if err != nil {
 			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": err.Error()})
 			return

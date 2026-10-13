@@ -527,11 +527,13 @@ Lancer reste un geste à part.
 
 ### Rapports enregistrés
 
-Une analyse finie reste en mémoire jusqu'à la suivante. Pour la garder, clique
-« enregistrer » sous son titre. Elle va dans `~/.quaero/rapports`, soit
+Coche « enregistrer le rapport », sous le champ, avant de lancer. L'analyse est
+gardée dès sa fin, même si l'onglet a été fermé entre-temps, et la case reste
+comme tu l'as laissée. Sans la case, l'analyse reste en mémoire jusqu'à la
+suivante, et « enregistrer » sous son titre la garde après coup. Elle va dans `~/.quaero/rapports`, soit
 `%USERPROFILE%\.quaero\rapports` sous Windows, un fichier JSON par analyse au
 même format que `-scan-json`. Sous Linux et macOS, le dossier et les fichiers
-ne sont lisibles que par toi. Rien n'est écrit sans ce clic.
+ne sont lisibles que par toi. Rien n'est écrit sans la case ou le bouton.
 Quand Quaero écoute sur toutes les interfaces (`-addr 0.0.0.0:7777`), les
 rapports ne sont ni gardés ni servis, comme les dossiers locaux. Ils peuvent
 citer du code privé.

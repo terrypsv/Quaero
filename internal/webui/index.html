@@ -268,6 +268,8 @@
   .meta .lien { margin-left: auto; }
   /* Rapports gardes sur la machine, a rouvrir sans reseau. */
   .panneau.rapports { max-width: none; }
+  .garder { display: inline-flex; align-items: center; gap: 8px; margin: 12px 0 0; font-size: 14px; cursor: pointer; user-select: none; }
+  .garder input { width: 18px; height: 18px; margin: 0; accent-color: var(--encre); cursor: pointer; }
   #rapports.depot .panneau.rapports { background: var(--acide); border-style: dashed; }
   .rapports-liste { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
   .rapports-liste li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; padding: 4px 6px; }
@@ -368,6 +370,7 @@
              placeholder="owner/repo, URL github.com ou chemin d'un dossier">
       <button class="go" id="analyser" type="button">analyser</button>
     </div>
+    <label class="garder" id="garder-ligne" hidden><input type="checkbox" id="garder"> enregistrer le rapport</label>
     <p class="consigne">Un dépôt privé demande un jeton qui peut le lire. Pour du code douteux, lance Quaero dans une machine jetable.</p>
     <details class="options" id="rapports" hidden>
       <summary>rapports enregistrés <span class="etat" id="rapports-etat"></span></summary>
@@ -614,6 +617,7 @@ function $(id) { return document.getElementById(id); }
 // le porte en en-tete: le cookie seul, que d'autres serveurs de la machine
 // recoivent aussi, n'ouvre pas l'API.
 var SESSION_KEY = "quaero.session";
+var KEEP_KEY = "quaero.enregistrer";
 var session = (function () {
   var m = /(?:^#|&)t=([A-Za-z0-9_-]+)/.exec(location.hash), t = "";
   try {
@@ -866,6 +870,11 @@ function init() {
   loadScan();
   loadReports();
   $("importer").onclick = function () { $("fichier-rapport").click(); };
+  // Le choix de la case est retenu par ce navigateur, d'une analyse a l'autre.
+  try { $("garder").checked = localStorage.getItem(KEEP_KEY) === "1"; } catch (e) { /* sans stockage, decochee */ }
+  $("garder").onchange = function () {
+    try { localStorage.setItem(KEEP_KEY, this.checked ? "1" : "0"); } catch (e) { /* sans effet */ }
+  };
   $("fichier-rapport").onchange = function () { importFiles(Array.prototype.slice.call(this.files || [])); };
   qfetch("/api/version").then(function (r) { return r.json(); })
     .then(function (d) { $("version").textContent = d.version || ""; })
@@ -1496,7 +1505,8 @@ function startScan() {
   }
   renderReports();
   $("analyser").disabled = true;
-  api("POST", "/api/scan", "cible=" + encodeURIComponent(target)).then(function (d) {
+  var keep = audit.reportsOn && $("garder").checked ? "&enregistrer=1" : "";
+  api("POST", "/api/scan", "cible=" + encodeURIComponent(target) + keep).then(function (d) {
     if (d.status === 202) { setJob(d.job); return; }
     if (d.status === 409) {
       audit.notice = ["déjà en cours", "Une analyse tourne, attends sa fin ou annule-la.", true];
@@ -1776,8 +1786,8 @@ function auditResult(job) {
   h += '<div class="bandeau"><h2>' + n + (n > 1 ? " constats" : " constat") + "<small>" + where
      + (ctx.commit ? ", commit " + esc(String(ctx.commit).slice(0, 7)) : "")
      + ", " + duration(job.elapsed_s) + "</small></h2></div>";
-  // Rien n'est garde sans le demander: l'analyse reste en memoire jusqu'a la
-  // suivante, « enregistrer » la range avec les autres rapports.
+  // Rien n'est garde sans le demander: la case cochee avant de lancer range
+  // l'analyse des sa fin, sinon le bouton « enregistrer » le fait apres coup.
   var act = "";
   if (audit.view) act = '<button type="button" class="choix" data-close-view="1">fermer</button>';
   else if (job.saved_id) act = '<span class="base">enregistré</span>';
@@ -1922,6 +1932,7 @@ function loadReports() {
 
 function renderReports() {
   $("rapports").hidden = !audit.reportsOn;
+  $("garder-ligne").hidden = !audit.reportsOn;
   if (!audit.reportsOn) return;
   $("rapports-etat").textContent = "(" + audit.reports.length + ")";
   var open = audit.view ? audit.view.saved_id : "", h = "";
@@ -1932,7 +1943,7 @@ function renderReports() {
        + n + (n > 1 ? " constats" : " constat") + "</span></button>"
        + '<button type="button" class="lien" data-del-report="' + esc(r.id) + '">supprimer</button></li>';
   });
-  $("rapports-liste").innerHTML = h || '<li class="base">Aucun rapport. Après une analyse, « enregistrer » la garde ici.</li>';
+  $("rapports-liste").innerHTML = h || '<li class="base">Aucun rapport. Coche « enregistrer le rapport » avant d\'analyser pour le garder ici.</li>';
   $("rapports-dossier").textContent = audit.reportsDir ? "Gardés sur ta machine, dans " + audit.reportsDir
     + ". Ceux de ce dossier sont déjà dans la liste, l'import sert aux fichiers -scan-json venus d'ailleurs." : "";
   bind("#rapports-liste [data-open-report]", function (b) { openReport(b.getAttribute("data-open-report")); });
