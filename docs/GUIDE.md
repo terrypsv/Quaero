@@ -527,7 +527,7 @@ Lancer reste un geste à part.
 
 ### Rapports enregistrés
 
-Coche « enregistrer le rapport », sous le champ, avant de lancer. L'analyse est
+Coche « Enregistrer le rapport », sous le champ, avant de lancer. L'analyse est
 gardée dès sa fin, même si l'onglet a été fermé entre-temps, et la case reste
 comme tu l'as laissée. Sans la case, l'analyse reste en mémoire jusqu'à la
 suivante, et « enregistrer » sous son titre la garde après coup. Elle va dans `~/.quaero/rapports`, soit

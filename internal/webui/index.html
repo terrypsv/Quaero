@@ -370,7 +370,7 @@
              placeholder="owner/repo, URL github.com ou chemin d'un dossier">
       <button class="go" id="analyser" type="button">analyser</button>
     </div>
-    <label class="garder" id="garder-ligne" hidden><input type="checkbox" id="garder"> enregistrer le rapport</label>
+    <label class="garder" id="garder-ligne" hidden><input type="checkbox" id="garder"> Enregistrer le rapport</label>
     <p class="consigne">Un dépôt privé demande un jeton qui peut le lire. Pour du code douteux, lance Quaero dans une machine jetable.</p>
     <details class="options" id="rapports" hidden>
       <summary>rapports enregistrés <span class="etat" id="rapports-etat"></span></summary>
@@ -1786,7 +1786,7 @@ function auditResult(job) {
   h += '<div class="bandeau"><h2>' + n + (n > 1 ? " constats" : " constat") + "<small>" + where
      + (ctx.commit ? ", commit " + esc(String(ctx.commit).slice(0, 7)) : "")
      + ", " + duration(job.elapsed_s) + "</small></h2></div>";
-  // Rien n'est garde sans le demander: la case cochee avant de lancer range
+  // Rien n'est garde sans le demander: la case « Enregistrer le rapport » range
   // l'analyse des sa fin, sinon le bouton « enregistrer » le fait apres coup.
   var act = "";
   if (audit.view) act = '<button type="button" class="choix" data-close-view="1">fermer</button>';
@@ -1943,7 +1943,7 @@ function renderReports() {
        + n + (n > 1 ? " constats" : " constat") + "</span></button>"
        + '<button type="button" class="lien" data-del-report="' + esc(r.id) + '">supprimer</button></li>';
   });
-  $("rapports-liste").innerHTML = h || '<li class="base">Aucun rapport. Coche « enregistrer le rapport » avant d\'analyser pour le garder ici.</li>';
+  $("rapports-liste").innerHTML = h || '<li class="base">Aucun rapport. Coche « Enregistrer le rapport » avant d\'analyser pour le garder ici.</li>';
   $("rapports-dossier").textContent = audit.reportsDir ? "Gardés sur ta machine, dans " + audit.reportsDir
     + ". Ceux de ce dossier sont déjà dans la liste, l'import sert aux fichiers -scan-json venus d'ailleurs." : "";
   bind("#rapports-liste [data-open-report]", function (b) { openReport(b.getAttribute("data-open-report")); });
