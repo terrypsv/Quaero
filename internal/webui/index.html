@@ -31,6 +31,13 @@
     --sombre: #3A3A36;
     --acide: #C6F432;
     --blanc: #FFFFFF;
+    /* Gravite: une couleur par niveau, du rouge sombre au bleu. Le mot reste
+       ecrit a cote, la couleur aide a parcourir sans porter seule le sens. */
+    --g-critical: #8F1D1D;
+    --g-high: #C2410C;
+    --g-medium: #D9A400;
+    --g-low: #2B63A6;
+    --g-info: #8C8C86;
     --texte: "Geist", "Segoe UI", system-ui, -apple-system, sans-serif;
     --mono: "JetBrains Mono", Consolas, "SF Mono", Menlo, "DejaVu Sans Mono", monospace;
   }
@@ -243,11 +250,25 @@
   .constat .l1 { align-items: center; }
   /* La gravite se lit au mot et a la forme, pas a la seule couleur. */
   .grav { flex: 0 0 auto; padding: 1px 8px; border: 2px solid var(--encre); font-size: 12px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
-  .grav.critical { background: var(--encre); color: var(--acide); }
-  .grav.high { background: var(--encre); color: var(--papier); }
-  .grav.medium { background: var(--blanc); }
-  .grav.low { border-color: var(--trait); color: var(--gris); }
+  .grav.critical { background: var(--g-critical); border-color: var(--g-critical); color: var(--blanc); }
+  .grav.high { background: var(--g-high); border-color: var(--g-high); color: var(--blanc); }
+  .grav.medium { background: var(--g-medium); border-color: var(--g-medium); color: var(--encre); }
+  .grav.low { background: var(--blanc); border-color: var(--g-low); color: var(--g-low); }
   .grav.info { border-color: var(--trait); color: var(--pale); }
+  /* Un trait de la couleur de la gravite borde chaque constat. */
+  .constat { border-left: 5px solid transparent; padding-left: 14px; }
+  .constat[data-grav="critical"] { border-left-color: var(--g-critical); }
+  .constat[data-grav="high"] { border-left-color: var(--g-high); }
+  .constat[data-grav="medium"] { border-left-color: var(--g-medium); }
+  .constat[data-grav="low"] { border-left-color: var(--g-low); }
+  .constat[data-grav="info"] { border-left-color: var(--trait); }
+  .pastille { display: inline-block; width: 10px; height: 10px; margin-right: 7px; border: 1px solid rgba(0, 0, 0, 0.25); }
+  .pastille.critical { background: var(--g-critical); }
+  .pastille.high { background: var(--g-high); }
+  .pastille.medium { background: var(--g-medium); }
+  .pastille.low { background: var(--g-low); }
+  .pastille.info { background: var(--g-info); }
+  details.repli > summary .grave { color: var(--g-high); }
   .titre { min-width: 0; font-weight: 700; font-size: 17px; overflow-wrap: anywhere; }
   .lieu { margin: 0; display: flex; flex-wrap: wrap; gap: 2px 14px; font-size: 14px; color: var(--gris); }
   .lieu code { color: var(--encre); overflow-wrap: anywhere; }
@@ -1291,9 +1312,10 @@ function render() {
   });
 }
 
-function btn(attr, value, text, active, n) {
+function btn(attr, value, text, active, n, dot) {
   var h = '<button type="button" class="choix' + (active ? " on" : "") + '" '
-        + attr + '="' + esc(value) + '" aria-pressed="' + (active ? "true" : "false") + '">' + esc(text);
+        + attr + '="' + esc(value) + '" aria-pressed="' + (active ? "true" : "false") + '">'
+        + (dot ? '<i class="pastille ' + esc(dot) + '" aria-hidden="true"></i>' : "") + esc(text);
   if (n !== null && n !== undefined) h += '<span class="n">' + n + "</span>";
   return h + "</button>";
 }
@@ -1593,7 +1615,7 @@ function findingItem(f, job) {
   var where = (f.target || {}).identifier || "";
   var by = evidenceOf(f, "engine");
   var tri = triOf(f, job), tags = evidenceOf(f, "contexte").filter(function (t) { return CONTEXT_LABEL[t]; });
-  var h = '<li class="depot constat" data-id="' + esc(f.id) + '"><div class="l1">'
+  var h = '<li class="depot constat" data-id="' + esc(f.id) + '" data-grav="' + esc(sev) + '"><div class="l1">'
         + '<span class="grav ' + esc(sev) + '">' + esc(SEVERITY_LABEL[sev] || sev) + "</span>"
         + '<span class="titre">' + esc(f.title) + "</span>"
         + (tri.etat !== "a_verifier" ? '<span class="etat-tri ' + esc(tri.etat) + '">' + esc(TRI_LABEL[tri.etat] || tri.etat) + "</span>" : "")
@@ -1740,7 +1762,7 @@ function auditFilters(items) {
     h += '<div class="filtres"><span>gravité</span><div class="boutons" role="group" aria-label="Filtrer par gravité">'
        + btn("data-sev", "toutes", "toutes", f.sev === "toutes", bySev.length);
     sevs.forEach(function (sv) {
-      h += btn("data-sev", sv, SEVERITY_LABEL[sv], f.sev === sv, bySev.filter(function (it) { return it.sev === sv; }).length);
+      h += btn("data-sev", sv, SEVERITY_LABEL[sv], f.sev === sv, bySev.filter(function (it) { return it.sev === sv; }).length, sv);
     });
     h += "</div></div>";
   }
@@ -1771,7 +1793,7 @@ function depItem(g) {
       if (!fix && f.remediation) fix = f.remediation;
     }
   });
-  var h = '<li class="depot constat dep" data-id="' + esc("dep:" + g.name) + '"><div class="l1">'
+  var h = '<li class="depot constat dep" data-id="' + esc("dep:" + g.name) + '" data-grav="' + esc(g.sev) + '"><div class="l1">'
         + '<span class="grav ' + esc(g.sev) + '">' + esc(SEVERITY_LABEL[g.sev] || g.sev) + "</span>"
         + '<span class="titre">' + esc(g.name) + (g.versions.length ? " <code>" + esc(g.versions.join(", ")) + "</code>" : "") + "</span></div>"
         + '<p class="lieu"><span>' + n + (n > 1 ? " vulnérabilités publiées" : " vulnérabilité publiée") + "</span>"
@@ -1860,7 +1882,7 @@ function auditResult(job) {
     if (!its.length) return "";
     var grave = its.filter(function (it) { return it.sev === "critical" || it.sev === "high"; }).length;
     return '<details class="repli" data-repli="' + key + '"' + (audit.repli[key] ? " open" : "") + "><summary>" + title + ", " + its.length
-         + (grave ? ", dont " + grave + (grave > 1 ? " graves" : " grave") : "") + '<span class="base">' + hint + "</span></summary>" + list(its) + "</details>";
+         + (grave ? ', <span class="grave">dont ' + grave + (grave > 1 ? " graves" : " grave") + "</span>" : "") + '<span class="base">' + hint + "</span></summary>" + list(its) + "</details>";
   };
   if (main.length) h += list(main);
   if (!shown.length) h += '<p class="rien">Rien avec ces filtres.</p>';
@@ -1894,10 +1916,8 @@ function triOf(f, view) {
 // ou faux positif, puis signale. Revenir en arriere reste toujours possible.
 function triButtons(id, tri) {
   if (!audit.triageOn) return "";
-  // Des liens plutot que des boutons: le tri accompagne le signalement sans
-  // lui disputer la place.
   var b = function (etat, label) {
-    return '<button type="button" class="lien" data-tri="' + esc(etat) + '" data-tri-id="' + esc(id) + '">' + label + "</button>";
+    return '<button type="button" class="choix" data-tri="' + esc(etat) + '" data-tri-id="' + esc(id) + '">' + label + "</button>";
   };
   switch (tri.etat) {
     case "a_verifier": return b("confirme", "confirmer") + b("faux_positif", "faux positif");
