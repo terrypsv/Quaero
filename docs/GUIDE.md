@@ -515,6 +515,10 @@ Lancer reste un geste à part.
   un appel au code fautif, la ligne le dit.
 - Deux filtres, gravité et type (code, dépendances), réduisent la liste sans
   relancer l'analyse.
+- Chaque gravité a sa couleur, rouge sombre pour critique, orange pour
+  élevée, jaune pour moyenne, bleu pour faible. Un trait de cette couleur
+  borde chaque constat. Le mot reste écrit à côté, la couleur ne porte pas
+  seule le sens.
 - À la place du quota de recherche, un encart dit ce que l'audit permet. Une
   analyse à la fois, 15 minutes au plus par moteur. L'audit ne prend rien sur
   le quota de l'API GitHub, le clone passe par git.
@@ -593,7 +597,9 @@ Il ne retire aucun constat et ne change aucune gravité.
   fautif. Sans appel, la mise à jour reste à faire, sans urgence.
 
 La ligne de commande affiche les mêmes étiquettes après chaque titre, et
-compte les constats hors du produit.
+compte les constats rangés à part. Elle annonce l'analyse dès son départ,
+avec le délai par moteur. Les moteurs travaillent sans rien afficher, parfois
+plusieurs minutes.
 
 **Les décisions** se prennent sous chaque constat de code. « confirmer » ou
 « faux positif », puis « marquer signalé » une fois le signalement déposé.

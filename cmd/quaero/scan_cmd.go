@@ -94,6 +94,9 @@ func runScan(target, jsonPath string, timeout time.Duration) (int, error) {
 	}
 	defer cleanup()
 
+	// Les moteurs tournent sans rien afficher, parfois plusieurs minutes: la
+	// ligne part avant, pour qu'un terminal muet ne passe pas pour un blocage.
+	fmt.Printf("Analyse de %s en cours, %s au plus par moteur. Ctrl+C pour arreter.\n", label, minutes(timeout))
 	opt := codescan.Options{Timeout: timeout, Untrusted: untrusted}
 	rep, err := codescan.RunWith(ctx, dir, version, opt, selectScanners(dir)...)
 	if ctx.Err() != nil {
@@ -112,7 +115,6 @@ func runScan(target, jsonPath string, timeout time.Duration) (int, error) {
 	if commit := headCommit(ctx, dir); commit != "" {
 		rep.Run.Context["commit"] = commit
 	}
-	fmt.Printf("Analyse de %s\n", label)
 	if untrusted {
 		fmt.Println("Depot tiers: environnement des moteurs durci. Pour du code douteux, scanner dans une machine jetable.")
 	}
@@ -197,4 +199,16 @@ func durationsLine(v any) string {
 		parts = append(parts, fmt.Sprintf("%s %.1fs", n, d[n]))
 	}
 	return "Durees: " + strings.Join(parts, ", ")
+}
+
+// minutes ecrit un delai pour un humain: « 15 min », « 90 s ». Zero ou moins
+// vaut le delai par defaut des moteurs.
+func minutes(d time.Duration) string {
+	if d <= 0 {
+		d = codescan.DefaultTimeout
+	}
+	if d%time.Minute == 0 {
+		return fmt.Sprintf("%d min", int(d/time.Minute))
+	}
+	return fmt.Sprintf("%d s", int(d.Round(time.Second)/time.Second))
 }
