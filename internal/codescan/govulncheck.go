@@ -202,6 +202,14 @@ func projectVuln(osv gvcOSV, f gvcFinding) finding.Finding {
 		out.Evidence = append(out.Evidence, finding.Evidence{Type: "url", Data: ref.URL})
 	}
 
+	// Pre-tri: govulncheck est le seul moteur qui sait si le code fautif est
+	// appele. Son avis voyage avec le constat (pretri.go).
+	if reach {
+		out.Evidence = append(out.Evidence, finding.Evidence{Type: EvidenceContext, Data: ContextCalled})
+	} else {
+		out.Evidence = append(out.Evidence, finding.Evidence{Type: EvidenceContext, Data: ContextNotCalled})
+	}
+
 	// OSV d'abord, puis les alias publics (CVE, GHSA) tels quels: c'est le
 	// numero que l'operateur citera dans une divulgation.
 	out.References = append(out.References, finding.Reference{Framework: "OSV", ID: osv.ID})

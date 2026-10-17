@@ -117,7 +117,7 @@ func runScan(target, jsonPath string, timeout time.Duration) (int, error) {
 		fmt.Println("Depot tiers: environnement des moteurs durci. Pour du code douteux, scanner dans une machine jetable.")
 	}
 
-	fail, review := 0, 0
+	fail, review, offProduct := 0, 0, 0
 	for _, f := range rep.Findings {
 		switch f.Status {
 		case "fail":
@@ -125,8 +125,21 @@ func runScan(target, jsonPath string, timeout time.Duration) (int, error) {
 		case "review":
 			review++
 		}
-		fmt.Printf("[%-8s %-6s] %-40s %s\n",
-			strings.ToUpper(string(f.Severity)), string(f.Status), f.ID, f.Title)
+		// Les etiquettes de pre-tri suivent le titre: elles disent ou regarder
+		// d'abord, sans rien retirer de la liste.
+		tags := codescan.Contexts(f)
+		suffix := ""
+		if len(tags) > 0 {
+			suffix = " (" + strings.Join(tags, ", ") + ")"
+		}
+		for _, t := range tags {
+			if codescan.OffProduct(t) {
+				offProduct++
+				break
+			}
+		}
+		fmt.Printf("[%-8s %-6s] %-40s %s%s\n",
+			strings.ToUpper(string(f.Severity)), string(f.Status), f.ID, f.Title, suffix)
 	}
 	fmt.Printf("\n%d constat(s): %d fail, %d review", len(rep.Findings), fail, review)
 	if merged, _ := rep.Run.Context["doublons_fusionnes"].(int); merged > 0 {
@@ -135,6 +148,9 @@ func runScan(target, jsonPath string, timeout time.Duration) (int, error) {
 	fmt.Println()
 	if line := durationsLine(rep.Run.Context["durees_s"]); line != "" {
 		fmt.Println(line)
+	}
+	if offProduct > 0 {
+		fmt.Printf("Pre-tri: %d constat(s) dans des tests, des exemples, ou du code tiers ou genere.\n", offProduct)
 	}
 	fmt.Println("Tous les constats sont a verifier manuellement avant toute declaration.")
 

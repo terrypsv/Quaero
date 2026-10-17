@@ -564,6 +564,54 @@ La page ne parle qu'à Quaero, sur ta machine, et marche sans réseau tant que
 Quaero tourne. S'il est arrêté, une ligne en tête de page le dit. Relancé, il
 reprend dans le même onglet (voir « Session et contrôle de l'hôte »).
 
+### Trier les constats
+
+Le tri se fait sans modèle de langage et rien ne quitte la machine.
+
+**Le pré-tri** pose des étiquettes pendant l'analyse, selon des règles simples.
+Il ne retire aucun constat et ne change aucune gravité.
+
+- « test » et « exemple » viennent du chemin du fichier (`_test.go`,
+  `tests/`, `testdata/`, `__tests__/`, `.spec.ts`, `examples/`, `demo/`...).
+  Ce code n'est pas livré. Ces constats sont rangés dans « tests et
+  exemples », repliés.
+- « généré ou tiers » vient du chemin (`vendor/`, `node_modules/`,
+  `third_party/`, `dist/` à la racine, `.pb.go`, `.min.js`...) ou de la marque
+  d'un code généré dans le commentaire de tête du fichier (`Code generated
+  ... DO NOT EDIT.`, `@generated`). Ce code est livré, mais il se corrige en
+  amont ou par une nouvelle génération. Ces constats sont rangés dans « code
+  tiers ou généré », repliés.
+- Les règles restent étroites. Un dossier `doc`, `sample` ou `mock`, un
+  fichier `_gen.go` peuvent être du code du produit, ils restent dans la
+  liste. Replié, chaque groupe dit combien de constats graves il contient.
+- semgrep sans compte ne rend plus les lignes signalées (« requires login »).
+  Quaero les relit dans le dépôt, sans jamais en sortir.
+- « CI » marque un fichier de la chaîne d'intégration (`.github/workflows/`,
+  `.gitlab-ci.yml`, `Jenkinsfile`...). Le constat reste dans la liste, une
+  faille de CI se signale comme une autre.
+- Pour une dépendance Go, govulncheck dit s'il trouve un appel au code
+  fautif. Sans appel, la mise à jour reste à faire, sans urgence.
+
+La ligne de commande affiche les mêmes étiquettes après chaque titre, et
+compte les constats hors du produit.
+
+**Les décisions** se prennent sous chaque constat de code. « confirmer » ou
+« faux positif », puis « marquer signalé » une fois le signalement déposé.
+« remettre à vérifier » revient en arrière et efface la note, après
+confirmation. Une note facultative accompagne chaque décision. Les faux
+positifs sont rangés à part, repliés.
+
+Une décision vaut pour le dépôt, pas pour une seule analyse. Elle revient avec
+l'analyse suivante, avec un rapport rouvert ou importé du même dépôt, tant que
+la ligne signalée ne change pas. Elle tient à la règle, au fichier et au texte
+de la ligne, pas à son numéro. Une ligne ajoutée plus haut ne la fait pas
+perdre, une modification de la ligne elle-même si, et le constat redevient à
+vérifier. Deux lignes identiques du même fichier sont départagées par leur
+rang, une décision sur l'une ne vaut pas pour l'autre. Les décisions sont gardées dans `~/.quaero/tri.json`, lisible par toi
+seul sous Linux et macOS. Un fichier abîmé n'est jamais écrasé, l'interface
+le dit. Deux Quaero ouverts en même temps ne s'effacent pas leurs décisions. Quand Quaero écoute sur toutes les interfaces, le tri est fermé comme
+les rapports.
+
 ## Structure
 
 ```
@@ -574,6 +622,7 @@ internal/audit/     santé des dépôts d'une requête, vers le schéma de const
 internal/codescan/  audit de code (govulncheck, gosec, semgrep, osv-scanner)
 internal/advisory/  brouillon de signalement privé à partir d'un constat
 internal/reports/   rapports enregistrés sur la machine, import et relecture
+internal/triage/    décisions de tri gardées d'une analyse à l'autre
 internal/repo/      lecture des références de dépôt GitHub, partagée
 internal/proctree/  arrêt d'un processus et de tout ce qu'il a lancé
 internal/finding/   schéma de constat partagé par la suite

@@ -282,6 +282,16 @@
   .rapports-liste li:hover { background: var(--blanc); }
   .rapports-liste li.on:hover { background: var(--acide); }
   .rapport-actions { margin-top: 12px; }
+  /* Tri: l'etat decide par l'utilisateur, et le contexte pose par le pre-tri. */
+  .etiq { display: inline-block; padding: 0 6px; border: 1px solid var(--trait); font-size: 12px; color: var(--gris); }
+  .etat-tri { flex: 0 0 auto; padding: 1px 8px; font-size: 12px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; border: 2px dashed var(--encre); }
+  .etat-tri.confirme { border-style: solid; background: var(--acide); }
+  .etat-tri.signale { border-style: solid; background: var(--encre); color: var(--acide); }
+  .etat-tri.faux_positif { border-color: var(--trait); color: var(--gris); }
+  .note-tri { flex: 1 1 260px; min-width: 0; padding: 6px 8px; border: 1px solid var(--trait); background: var(--blanc); color: var(--encre); font: inherit; font-size: 13px; }
+  details.repli { margin-top: 18px; }
+  details.repli > summary { cursor: pointer; padding: 8px 0; font-size: 14px; font-weight: 700; border-bottom: 2px solid var(--encre); }
+  details.repli > summary .base { margin-left: 10px; font-weight: 400; }
   .rapport-rouvert { display: inline-block; margin: 0 0 10px; padding: 2px 10px; background: var(--encre); color: var(--acide); font-size: 12px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
   #rapports-msg { margin: 10px 0; }
 
@@ -1388,6 +1398,8 @@ var audit = {
   limits: null, onTab: false,
   // view est un rapport enregistre rouvert, montre a la place de l'analyse.
   view: null, viewNote: "", reports: [], reportsDir: "", reportsOn: false,
+  // triageOn: Quaero garde les decisions de tri. repli: sections ouvertes.
+  triageOn: false, repli: { essais: false, tiers: false, faux: false }, triQueue: {},
   filter: { sev: "toutes", kind: "tout" }
 };
 
@@ -1442,6 +1454,7 @@ function loadScan() {
     }
     audit.misses = 0;
     audit.available = d.available !== false;
+    audit.triageOn = !!d.triage;
     if (d.limits) audit.limits = d.limits;
     setJob(d.job || null);
   }).catch(retryScan);
@@ -1579,12 +1592,16 @@ function findingItem(f, job) {
   var sev = f.severity || "info";
   var where = (f.target || {}).identifier || "";
   var by = evidenceOf(f, "engine");
+  var tri = triOf(f, job), tags = evidenceOf(f, "contexte").filter(function (t) { return CONTEXT_LABEL[t]; });
   var h = '<li class="depot constat" data-id="' + esc(f.id) + '"><div class="l1">'
         + '<span class="grav ' + esc(sev) + '">' + esc(SEVERITY_LABEL[sev] || sev) + "</span>"
-        + '<span class="titre">' + esc(f.title) + "</span></div>";
-  if (where || by.length) {
+        + '<span class="titre">' + esc(f.title) + "</span>"
+        + (tri.etat !== "a_verifier" ? '<span class="etat-tri ' + esc(tri.etat) + '">' + esc(TRI_LABEL[tri.etat] || tri.etat) + "</span>" : "")
+        + "</div>";
+  if (where || by.length || tags.length) {
     h += '<p class="lieu">' + (where ? "<code>" + esc(where) + "</code>" : "")
-       + (by.length ? "<span>" + esc(by.join(", ")) + "</span>" : "") + "</p>";
+       + (by.length ? "<span>" + esc(by.join(", ")) + "</span>" : "")
+       + tags.map(function (t) { return '<span class="etiq">' + esc(CONTEXT_LABEL[t]) + "</span>"; }).join("") + "</p>";
   }
 
   var body = "";
@@ -1602,9 +1619,17 @@ function findingItem(f, job) {
   if (body) h += '<details class="plus"><summary>détails</summary><div class="plus-corps">' + body + "</div></details>";
 
   var d = audit.drafts[f.id];
-  h += '<div class="actions"><button type="button" class="choix" data-draft="' + esc(f.id) + '">'
-     + (d && d.open ? "masquer le signalement" : "préparer le signalement") + "</button></div>";
-  if (d && d.open) {
+  h += '<div class="actions">';
+  if (tri.etat !== "faux_positif") {
+    h += '<button type="button" class="choix" data-draft="' + esc(f.id) + '">'
+       + (d && d.open ? "masquer le signalement" : "préparer le signalement") + "</button>";
+  }
+  h += triButtons(f.id, tri) + "</div>";
+  if (audit.triageOn && tri.etat !== "a_verifier") {
+    h += '<div class="actions"><input type="text" class="note-tri" maxlength="500" spellcheck="false" data-note="' + esc(f.id)
+       + '" placeholder="note, facultative" aria-label="Note sur ce constat" value="' + esc(tri.note || "") + '"></div>';
+  }
+  if (d && d.open && tri.etat !== "faux_positif") {
     h += '<div class="brouillon"><textarea readonly spellcheck="false" aria-label="Brouillon de signalement">' + esc(d.text) + "</textarea>"
        + '<div class="actions"><button type="button" class="choix" data-copy="' + esc(f.id) + '">copier</button>'
        + '<button type="button" class="choix" data-save="' + esc(f.id) + '">enregistrer .md</button>'
@@ -1734,11 +1759,15 @@ function auditFilters(items) {
 // depItem dessine une dependance et ses vulnerabilites publiees. Elles sont
 // deja connues: la reponse est une mise a jour, pas un signalement prive.
 function depItem(g) {
-  var n = g.list.length, engines = [], reach = false, fix = "";
+  var n = g.list.length, engines = [], reach = false, notCalled = false, fix = "";
   g.list.forEach(function (f) {
+    var ctx = evidenceOf(f, "contexte");
     evidenceOf(f, "engine").forEach(function (e) { if (engines.indexOf(e) < 0) engines.push(e); });
+    if (ctx.indexOf("appele") >= 0) reach = true;
+    if (ctx.indexOf("non_appele") >= 0) notCalled = true;
     if (evidenceOf(f, "engine").indexOf("govulncheck") >= 0) {
-      if (f.severity === "high" || f.severity === "critical") reach = true;
+      // Rapport d'avant le pre-tri: la gravite haute disait l'appel.
+      if (!ctx.length && (f.severity === "high" || f.severity === "critical")) reach = true;
       if (!fix && f.remediation) fix = f.remediation;
     }
   });
@@ -1760,6 +1789,8 @@ function depItem(g) {
 
   if (reach) {
     h += '<p class="base"><b>govulncheck trouve un appel au code fautif.</b> Vérifie l\'impact, puis propose la mise à jour.</p>';
+  } else if (notCalled) {
+    h += '<p class="base">govulncheck ne trouve aucun appel au code fautif. La mise à jour reste à faire, sans urgence.</p>';
   } else {
     h += '<p class="base">Déjà publiées. Une mise à jour de la dépendance, par une PR ordinaire, suffit.</p>';
   }
@@ -1810,11 +1841,125 @@ function auditResult(job) {
   var shown = items.filter(function (it) {
     return (f.sev === "toutes" || it.sev === f.sev) && (f.kind === "tout" || it.kind === f.kind);
   });
-  h += '<ol class="liste">';
-  shown.forEach(function (it) { h += it.kind === "code" ? findingItem(it.f, job) : depItem(it); });
-  h += "</ol>";
+  // Le pre-tri et les decisions rangent sans rien cacher: tests, exemples et
+  // code genere d'un cote, faux positifs de l'autre, chacun replie.
+  var main = [], tiers = [], essais = [], fp = [];
+  shown.forEach(function (it) {
+    var ctx = it.kind === "code" ? evidenceOf(it.f, "contexte") : [];
+    if (it.kind === "code" && triOf(it.f, job).etat === "faux_positif") fp.push(it);
+    else if (ctx.indexOf("genere") >= 0) tiers.push(it);
+    else if (ctx.indexOf("test") >= 0 || ctx.indexOf("exemple") >= 0) essais.push(it);
+    else main.push(it);
+  });
+  var list = function (its) {
+    return '<ol class="liste">' + its.map(function (it) { return it.kind === "code" ? findingItem(it.f, job) : depItem(it); }).join("") + "</ol>";
+  };
+  // section garde son etat d'ouverture et dit, replie, combien de constats
+  // graves elle contient: rien de grave ne passe inapercu.
+  var section = function (key, its, title, hint) {
+    if (!its.length) return "";
+    var grave = its.filter(function (it) { return it.sev === "critical" || it.sev === "high"; }).length;
+    return '<details class="repli" data-repli="' + key + '"' + (audit.repli[key] ? " open" : "") + "><summary>" + title + ", " + its.length
+         + (grave ? ", dont " + grave + (grave > 1 ? " graves" : " grave") : "") + '<span class="base">' + hint + "</span></summary>" + list(its) + "</details>";
+  };
+  if (main.length) h += list(main);
   if (!shown.length) h += '<p class="rien">Rien avec ces filtres.</p>';
+  else if (!main.length) h += '<p class="rien">Rien en dehors des sections repliées.</p>';
+  h += section("essais", essais, "tests et exemples", "hors du logiciel livré, à regarder en dernier");
+  h += section("tiers", tiers, "code tiers ou généré", "livré, mais corrigé en amont ou par une nouvelle génération");
+  h += section("faux", fp, "faux positifs", "écartés à la main, gardés pour les prochaines analyses");
   return h + '<p class="base">À vérifier à la main. Un constat non confirmé ne se signale pas.</p>';
+}
+
+// ---- tri des constats ------------------------------------------------------------
+
+// Tables sans prototype: une etiquette nommee « constructor » dans un rapport
+// importe reste une etiquette inconnue.
+var TRI_LABEL = table({ a_verifier: "à vérifier", confirme: "confirmé", signale: "signalé", faux_positif: "faux positif" });
+var CONTEXT_LABEL = table({ test: "test", exemple: "exemple", genere: "généré ou tiers", ci: "CI" });
+
+function table(o) {
+  var t = Object.create(null), k;
+  for (k in o) if (Object.prototype.hasOwnProperty.call(o, k)) t[k] = o[k];
+  return t;
+}
+
+// triOf rend la decision prise sur un constat, a verifier par defaut.
+function triOf(f, view) {
+  var d = ((view || {}).tri || {})[f.id];
+  return d && d.etat ? d : { etat: "a_verifier", note: "" };
+}
+
+// triButtons propose les etapes suivantes du tri: a verifier, puis confirme
+// ou faux positif, puis signale. Revenir en arriere reste toujours possible.
+function triButtons(id, tri) {
+  if (!audit.triageOn) return "";
+  // Des liens plutot que des boutons: le tri accompagne le signalement sans
+  // lui disputer la place.
+  var b = function (etat, label) {
+    return '<button type="button" class="lien" data-tri="' + esc(etat) + '" data-tri-id="' + esc(id) + '">' + label + "</button>";
+  };
+  switch (tri.etat) {
+    case "a_verifier": return b("confirme", "confirmer") + b("faux_positif", "faux positif");
+    case "confirme": return b("signale", "marquer signalé") + b("a_verifier", "remettre à vérifier");
+    default: return b("a_verifier", "remettre à vérifier");
+  }
+}
+
+// setTri enregistre une decision. Elle vaut pour toutes les analyses du meme
+// depot: l'analyse en cours se recharge si c'est un rapport rouvert qui a change.
+// Les envois d'un meme constat partent l'un apres l'autre, dans l'ordre des
+// gestes: une note tapee puis un bouton clique arrivent dans cet ordre.
+function setTri(id, etat, note) {
+  var v = shown();
+  if (!v) return;
+  var input = noteInput(id);
+  if (note == null) note = input ? input.value : triOf({ id: id }, v).note || "";
+  if (etat === "a_verifier" && note && !window.confirm("Remettre à vérifier efface la note de ce constat. Continuer ?")) return;
+  var body = "id=" + encodeURIComponent(v.id) + "&finding=" + encodeURIComponent(id) + "&etat=" + encodeURIComponent(etat)
+           + (etat === "a_verifier" ? "" : "&note=" + encodeURIComponent(note));
+  var prev = audit.triQueue[id] || Promise.resolve();
+  var next = prev.then(function () {
+    return api("POST", "/api/triage", body).then(function (d) {
+      if (d.status !== 200 || !d.tri) { setNotice("tri non enregistré", d.error || String(d.status)); return; }
+      if (shown() !== v) return;
+      var was = triOf({ id: id }, v).etat;
+      v.tri = v.tri || {};
+      if (d.tri.etat === "a_verifier") delete v.tri[id];
+      else v.tri[id] = d.tri;
+      // Un faux positif change de section: tout se redessine, en gardant les
+      // notes en cours de frappe. Sinon seul le constat se redessine.
+      if ((was === "faux_positif") !== (d.tri.etat === "faux_positif")) {
+        var typed = typedNotes(v);
+        renderAudit();
+        restoreNotes(typed);
+      } else {
+        refreshItem(id);
+      }
+      if (audit.view && audit.job) loadScan();
+    }).catch(function (err) { setNotice(failTitle(err), failText(err)); });
+  });
+  audit.triQueue[id] = next;
+}
+
+function noteInput(id) {
+  var inputs = document.querySelectorAll("#audit [data-note]"), i;
+  for (i = 0; i < inputs.length; i++) if (inputs[i].getAttribute("data-note") === id) return inputs[i];
+  return null;
+}
+
+// typedNotes releve les notes tapees mais pas encore enregistrees.
+function typedNotes(v) {
+  var out = [], inputs = document.querySelectorAll("#audit [data-note]"), i;
+  for (i = 0; i < inputs.length; i++) {
+    var id = inputs[i].getAttribute("data-note");
+    if (inputs[i].value !== (triOf({ id: id }, v).note || "")) out.push([id, inputs[i].value]);
+  }
+  return out;
+}
+
+function restoreNotes(typed) {
+  typed.forEach(function (t) { var input = noteInput(t[0]); if (input) input.value = t[1]; });
 }
 
 // shown rend ce que l'onglet montre: un rapport rouvert, sinon l'analyse.
@@ -1856,6 +2001,20 @@ function bindAudit(root) {
   each("[data-kind]", function (b) { audit.filter.kind = b.getAttribute("data-kind"); renderAudit(); });
   each("[data-copy]", function (b) { copyDraft(b.getAttribute("data-copy"), b); });
   each("[data-save]", function (b) { saveDraft(b.getAttribute("data-save")); });
+  each("[data-tri]", function (b) { setTri(b.getAttribute("data-tri-id"), b.getAttribute("data-tri")); });
+  var notes = root.querySelectorAll("[data-note]"), i;
+  for (i = 0; i < notes.length; i++) {
+    (function (input) {
+      input.onchange = function () {
+        var id = input.getAttribute("data-note");
+        setTri(id, triOf({ id: id }, shown()).etat, input.value);
+      };
+    })(notes[i]);
+  }
+  var replis = root.querySelectorAll("details[data-repli]");
+  for (i = 0; i < replis.length; i++) {
+    (function (d) { d.ontoggle = function () { audit.repli[d.getAttribute("data-repli")] = d.open; }; })(replis[i]);
+  }
 }
 
 // Le brouillon est prepare par le serveur a partir du rapport affiche. Il
@@ -1954,6 +2113,7 @@ function setView(view, note) {
   if (!view || !audit.view || view.id !== audit.view.id) {
     audit.drafts = {};
     audit.filter = { sev: "toutes", kind: "tout" };
+    audit.repli = { essais: false, tiers: false, faux: false };
   }
   audit.view = view;
   audit.viewNote = view ? note || "" : "";

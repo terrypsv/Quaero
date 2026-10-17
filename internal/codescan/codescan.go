@@ -152,7 +152,7 @@ func RunWith(ctx context.Context, dir, version string, opt Options, scanners ...
 		}
 	}
 
-	kept := uniqueIDs(mergeSameLine(dedupe(found)))
+	kept := pretri(abs, uniqueIDs(mergeSameLine(dedupe(found))))
 	for _, f := range kept {
 		rep.Add(f)
 	}

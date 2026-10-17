@@ -19,6 +19,7 @@ import (
 	"github.com/terrypsv/Quaero/internal/codescan"
 	"github.com/terrypsv/Quaero/internal/github"
 	"github.com/terrypsv/Quaero/internal/reports"
+	"github.com/terrypsv/Quaero/internal/triage"
 	"github.com/terrypsv/Quaero/internal/webui"
 )
 
@@ -117,6 +118,11 @@ func main() {
 	// comme les dossiers locaux: elles peuvent citer du code prive.
 	if dir, err := reports.DefaultDir(); err == nil && !webui.ListensEverywhere(*addr) {
 		server.Reports = &reports.Store{Dir: dir}
+	}
+	// Les decisions de tri suivent la meme regle: elles citent des fichiers et
+	// des notes sur des failles non corrigees.
+	if path, err := triage.DefaultPath(); err == nil && !webui.ListensEverywhere(*addr) {
+		server.Triage = &triage.Store{Path: path}
 	}
 	httpServer := &http.Server{
 		Addr:              *addr,

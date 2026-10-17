@@ -30,6 +30,7 @@ import (
 	"github.com/terrypsv/Quaero/internal/model"
 	"github.com/terrypsv/Quaero/internal/rank"
 	"github.com/terrypsv/Quaero/internal/reports"
+	"github.com/terrypsv/Quaero/internal/triage"
 )
 
 //go:embed index.html
@@ -96,6 +97,9 @@ type Server struct {
 	// reports.go). Nil, la page ne propose ni de les enregistrer ni de les
 	// rouvrir.
 	Reports *reports.Store
+	// Triage garde les decisions de tri sur les constats (triage.go). Nil,
+	// la page ne propose pas de trier.
+	Triage *triage.Store
 
 	cache     *searchCache
 	scans     *scanJobs
@@ -138,6 +142,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/reports/import", s.handleReportImport)
 	mux.HandleFunc("/api/reports/delete", s.handleReportDelete)
 	mux.HandleFunc("/api/presence", s.handlePresence)
+	mux.HandleFunc("/api/triage", s.handleTriage)
 	mux.HandleFunc("/fonts/", s.handleFont)
 	return guard{token: s.Token, allowed: allowedHosts(s.Addr), next: mux, seen: s.notePresence}
 }

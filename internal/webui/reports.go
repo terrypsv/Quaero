@@ -88,9 +88,9 @@ func (s *Server) handleScanSave(w http.ResponseWriter, r *http.Request) {
 	case errors.Is(err, errNoReport):
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
 	case err != nil:
-		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "rapport non enregistre: " + err.Error(), "job": v})
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "rapport non enregistre: " + err.Error(), "job": s.withTriage(v)})
 	default:
-		writeJSON(w, http.StatusOK, map[string]any{"job": v})
+		writeJSON(w, http.StatusOK, map[string]any{"job": s.withTriage(v)})
 	}
 }
 
@@ -176,7 +176,7 @@ func (s *Server) handleReportView(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": reports.ErrNotFound.Error()})
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"view": savedView(id, rep)})
+	writeJSON(w, http.StatusOK, map[string]any{"view": s.withTriage(savedView(id, rep))})
 }
 
 // handleReportImport enregistre un rapport envoye par la page, lu depuis un

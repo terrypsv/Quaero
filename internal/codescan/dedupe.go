@@ -293,18 +293,22 @@ func engineRank(f finding.Finding) int {
 	return best
 }
 
-// mergeEngines ajoute a dst les preuves de moteur de src qu'il n'a pas deja.
+// mergeEngines ajoute a dst les preuves de moteur et les etiquettes de pre-tri
+// de src qu'il n'a pas deja.
 func mergeEngines(dst, src []finding.Evidence) []finding.Evidence {
-	have := map[string]bool{}
+	// Les moteurs et les etiquettes de pre-tri passent au survivant: l'avis de
+	// govulncheck sur l'appel du code fautif ne doit pas se perdre.
+	keep := func(e finding.Evidence) bool { return e.Type == EvidenceEngine || e.Type == EvidenceContext }
+	have := map[finding.Evidence]bool{}
 	for _, e := range dst {
-		if e.Type == EvidenceEngine {
-			have[e.Data] = true
+		if keep(e) {
+			have[e] = true
 		}
 	}
 	for _, e := range src {
-		if e.Type == EvidenceEngine && !have[e.Data] {
+		if keep(e) && !have[e] {
 			dst = append(dst, e)
-			have[e.Data] = true
+			have[e] = true
 		}
 	}
 	return dst
