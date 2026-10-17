@@ -21,6 +21,7 @@ import (
 	"github.com/terrypsv/Quaero/internal/finding"
 	"github.com/terrypsv/Quaero/internal/repo"
 	"github.com/terrypsv/Quaero/internal/reports"
+	"github.com/terrypsv/Quaero/internal/triage"
 )
 
 // L'onglet audit lance l'analyse d'une cible nommee a la main. Les garde-fous
@@ -199,6 +200,9 @@ type scanView struct {
 	SaveError string `json:"save_error,omitempty"`
 	// SavedAt date un rapport rouvert.
 	SavedAt *time.Time `json:"saved_at,omitempty"`
+	// Triage porte les decisions deja prises sur les constats, par
+	// identifiant (triage.go). Un constat absent est a verifier.
+	Triage map[string]triage.Decision `json:"tri,omitempty"`
 }
 
 // view lit j sous le verrou de scanJobs.
@@ -417,7 +421,12 @@ const maxFormBytes = 4 << 10
 func (s *Server) handleScan(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet, http.MethodHead:
-		writeJSON(w, http.StatusOK, map[string]any{"available": s.Scan != nil, "job": s.scans.current(), "limits": s.scanLimits()})
+		var job *scanView
+		if v := s.scans.current(); v != nil {
+			withTri := s.withTriage(*v)
+			job = &withTri
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"available": s.Scan != nil, "job": job, "limits": s.scanLimits(), "triage": s.Triage != nil})
 	case http.MethodPost:
 		if s.Scan == nil {
 			writeJSON(w, http.StatusNotImplemented, map[string]string{"error": "analyse indisponible dans cette execution"})
@@ -450,10 +459,10 @@ func (s *Server) handleScan(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if !started {
-			writeJSON(w, http.StatusConflict, map[string]any{"error": "une analyse est deja en cours", "job": s.scans.viewOf(job)})
+			writeJSON(w, http.StatusConflict, map[string]any{"error": "une analyse est deja en cours", "job": s.withTriage(s.scans.viewOf(job))})
 			return
 		}
-		writeJSON(w, http.StatusAccepted, map[string]any{"job": s.scans.viewOf(job)})
+		writeJSON(w, http.StatusAccepted, map[string]any{"job": s.withTriage(s.scans.viewOf(job))})
 	default:
 		w.Header().Set("Allow", "GET, HEAD, POST")
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "methode non permise"})
@@ -477,7 +486,7 @@ func (s *Server) handleScanCancel(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusConflict, map[string]string{"error": "aucune analyse en cours sous cet identifiant"})
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"job": s.scans.viewOf(job)})
+	writeJSON(w, http.StatusOK, map[string]any{"job": s.withTriage(s.scans.viewOf(job))})
 }
 
 // draftFileRe garde d'un identifiant de constat ce qui peut nommer un fichier.

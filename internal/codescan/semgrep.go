@@ -92,6 +92,7 @@ type semgrepResult struct {
 	CheckID string       `json:"check_id"`
 	Path    string       `json:"path"`
 	Start   semgrepPos   `json:"start"`
+	End     semgrepPos   `json:"end"`
 	Extra   semgrepExtra `json:"extra"`
 }
 
@@ -129,6 +130,12 @@ func parseSemgrepAt(raw []byte, root string) ([]finding.Finding, error) {
 	var out []finding.Finding
 	for _, r := range rep.Results {
 		r.Path = relTo(root, r.Path)
+		// Sans compte semgrep, les lignes signalees arrivent remplacees par
+		// « requires login ». Quaero les relit dans le depot: c'est le code
+		// que l'on doit voir, et ce qui distingue deux constats du meme fichier.
+		if placeholderLines(r.Extra.Lines) {
+			r.Extra.Lines = repoLines(root, r.Path, r.Start.Line, r.End.Line)
+		}
 		out = append(out, projectSemgrep(r))
 	}
 	return out, nil
@@ -247,4 +254,10 @@ func firstLine(s string) string {
 		return strings.TrimSpace(s[:i])
 	}
 	return strings.TrimSpace(s)
+}
+
+// placeholderLines reconnait des lignes que semgrep n'a pas rendues.
+func placeholderLines(lines string) bool {
+	t := strings.TrimSpace(lines)
+	return t == "" || strings.EqualFold(t, "requires login")
 }

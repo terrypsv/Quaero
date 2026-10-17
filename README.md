@@ -65,6 +65,11 @@ reste sur ta machine et se rouvre plus tard sans réseau. Un rapport
 `-scan-json` s'importe, ou se dépose sur la page, pour préparer ses
 signalements depuis l'interface. Relancer Quaero reprend l'onglet déjà ouvert.
 
+Le tri se fait sans modèle de langage. Les constats dans des tests, des
+exemples ou du code généré sont rangés à part. Chaque constat se marque
+confirmé, faux positif ou signalé, et la décision revient avec les analyses
+suivantes du même dépôt.
+
 La même chose existe en ligne de commande.
 
 ```text
