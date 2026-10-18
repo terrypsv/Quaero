@@ -236,6 +236,7 @@
   details.plus summary:hover { color: var(--encre); }
   .plus-corps { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; background: var(--blanc); border: 1px solid var(--trait); font-size: 13px; }
   .plus-corps p { margin: 0; }
+  .plus-corps code { overflow-wrap: anywhere; }
 
   .pagination { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 12px; padding-top: 20px; color: var(--gris); font-size: 13px; font-variant-numeric: tabular-nums; }
   .pagination .suite { border-color: var(--encre); background: var(--encre); color: var(--acide); }
@@ -322,6 +323,9 @@
   .actions.compactes { gap: 6px; }
   .actions.compactes .choix { min-height: 28px; padding: 0 10px; font-size: 13px; border-width: 1.5px; }
   .constat details.plus summary { min-height: 24px; }
+  /* Details et correction cote a cote. Un repli ouvert prend la ligne. */
+  .replis { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 0 18px; }
+  .replis details[open] { flex-basis: 100%; }
   /* Tri: l'etat decide par l'utilisateur, et le contexte pose par le pre-tri. */
   .etiq { display: inline-block; padding: 0 6px; border: 1px solid var(--trait); font-size: 12px; color: var(--gris); }
   .etat-tri { flex: 0 0 auto; padding: 1px 8px; font-size: 12px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; border: 2px dashed var(--encre); }
@@ -1658,6 +1662,34 @@ function evidenceOf(f, kind) {
     .map(function (e) { return String(e.data).trim(); });
 }
 
+// lowerFirst met en minuscule la premiere lettre, pour une phrase qui suit
+// une etiquette.
+function lowerFirst(s) { return s ? s.charAt(0).toLowerCase() + s.slice(1) : s; }
+
+// fixOf dit comment corriger un constat de code: le remede du guide, la
+// correction que la regle propose, et quand c'est un faux positif, comment le
+// dire dans le code pour que la prochaine analyse ne le releve plus.
+function fixOf(f) {
+  var h = "";
+  if (f.remediation) h += "<p>" + esc(f.remediation) + "</p>";
+  evidenceOf(f, "correctif").slice(0, 1).forEach(function (c) {
+    h += '<p class="base">correction proposée par la règle</p><pre>' + esc(c) + "</pre>";
+  });
+  evidenceOf(f, "exception").slice(0, 1).forEach(function (x) {
+    // Les annotations, entre guillemets, se lisent comme du code.
+    h += '<p class="base"><b>faux positif</b> ' + esc(lowerFirst(x)).replace(/« (.+?) »/g, "<code>$1</code>") + "</p>";
+  });
+  return h;
+}
+
+// folds range les details et la correction dans deux replis cote a cote.
+function folds(body, fix) {
+  var h = "";
+  if (body) h += '<details class="plus" data-pli="details"><summary>détails</summary><div class="plus-corps">' + body + "</div></details>";
+  if (fix) h += '<details class="plus" data-pli="corriger"><summary>comment corriger</summary><div class="plus-corps">' + fix + "</div></details>";
+  return h ? '<div class="replis">' + h + "</div>" : "";
+}
+
 function findingItem(f, job) {
   var sev = f.severity || "info";
   var where = (f.target || {}).identifier || "";
@@ -1696,8 +1728,7 @@ function findingItem(f, job) {
   evidenceOf(f, "url").filter(function (u) { return /^https:\/\//.test(u); }).slice(0, 3).forEach(function (u) {
     body += '<p><a href="' + esc(u) + '" target="_blank" rel="noopener noreferrer">' + esc(u) + "</a></p>";
   });
-  if (f.remediation) body += "<p>" + esc(f.remediation) + "</p>";
-  if (body) h += '<details class="plus"><summary>détails</summary><div class="plus-corps">' + body + "</div></details>";
+  h += folds(body, fixOf(f));
 
   if (audit.triageOn && tri.etat !== "a_verifier") {
     h += '<div class="actions"><input type="text" class="note-tri" maxlength="500" spellcheck="false" data-note="' + esc(f.id)
@@ -1738,16 +1769,15 @@ function renderAudit() {
     h += '<p class="erreur"><b>échec</b>' + esc(failureText(job)) + "</p>";
   }
   // Un avis ou une relecture ne referme pas les details deja ouverts.
-  var open = {}, items = document.querySelectorAll("#audit [data-id]"), i;
-  for (i = 0; i < items.length; i++) {
-    var dt = items[i].querySelector("details");
-    if (dt && dt.open) open[items[i].getAttribute("data-id")] = true;
+  var open = {}, folded = document.querySelectorAll("#audit [data-id] details[data-pli]"), i;
+  var foldKey = function (d) { return d.closest("[data-id]").getAttribute("data-id") + "|" + d.getAttribute("data-pli"); };
+  for (i = 0; i < folded.length; i++) {
+    if (folded[i].open) open[foldKey(folded[i])] = true;
   }
   $("audit").innerHTML = h;
-  items = document.querySelectorAll("#audit [data-id]");
-  for (i = 0; i < items.length; i++) {
-    var dn = items[i].querySelector("details");
-    if (dn && open[items[i].getAttribute("data-id")]) dn.open = true;
+  folded = document.querySelectorAll("#audit [data-id] details[data-pli]");
+  for (i = 0; i < folded.length; i++) {
+    if (open[foldKey(folded[i])]) folded[i].open = true;
   }
   if ($("annuler")) $("annuler").onclick = cancelScan;
   bindAudit($("audit"));
@@ -1840,13 +1870,71 @@ function unusedDep(g) {
 // depItem dessine une dependance et ses vulnerabilites publiees. Elles sont
 // deja connues: la reponse est une mise a jour, pas un signalement prive.
 // goVersion est la version de Go qui a compile le depot pour govulncheck.
+// depFix dit comment corriger une dependance: la version qui corrige toutes
+// ses vulnerabilites et les commandes qui y passent, a relire et a lancer
+// soi-meme. Deux copies sur deux branches (5.7.1 et 6.3.0) ont chacune leur
+// version cible. Un rapport d'avant ce calcul garde le conseil de govulncheck
+// (old).
+function depFix(g, targets, commands, noFix, old) {
+  var h = "", run = commands.length
+    ? "<pre>" + esc(commands.join("\n")) + "</pre>"
+      + '<p class="base">Quaero ne lance rien. À relire, puis à lancer à la racine du dépôt.</p>'
+    : "";
+  if (unusedDep(g)) {
+    var tidy = commands.filter(function (c) { return / mod tidy$/.test(c); });
+    return "<p>La retirer, aucun paquet ne l'importe.</p>" + (tidy.length
+      ? "<pre>" + esc(tidy.join("\n")) + "</pre>" + '<p class="base">Quaero ne lance rien. À relire, puis à lancer à la racine du dépôt.</p>'
+      : "");
+  }
+  var what = noFix ? "celles qui ont un correctif" : (g.list.length > 1 ? "toutes ses vulnérabilités" : "sa vulnérabilité");
+  if (g.name === "stdlib" && targets.length) {
+    // La plus haute corrige tout: une seule version de Go compile.
+    h += "<p>Compiler les binaires publiés avec Go " + esc(targets[targets.length - 1]) + " ou plus récent.</p>";
+  } else if (targets.length === 1) {
+    h += "<p>Passer à <code>" + esc(targets[0]) + "</code> ou plus récent, la version qui corrige " + what + ".</p>";
+  } else if (targets.length) {
+    h += "<p>Passer à " + targets.map(function (t) { return "<code>" + esc(t) + "</code>"; }).join(" ou ")
+       + " selon la version en place, ou plus récent. Chacune corrige " + what + " sur sa branche.</p>";
+  } else if (old) {
+    h += "<p>" + esc(old) + "</p>";
+  }
+  h += run;
+  if (noFix) {
+    h += "<p>" + noFix + (noFix > 1 ? " vulnérabilités n'ont" : " vulnérabilité n'a")
+       + " aucune version corrigée publiée. Si le code fautif est appelé, isoler ou remplacer la dépendance.</p>";
+  }
+  return h;
+}
+
+// depFolds range les vulnerabilites et la correction d'une dependance.
+function depFolds(body, fix) {
+  var h = '<details class="plus" data-pli="vulns"><summary>vulnérabilités</summary><div class="plus-corps">' + body + "</div></details>";
+  if (fix) h += '<details class="plus" data-pli="corriger"><summary>comment corriger</summary><div class="plus-corps">' + fix + "</div></details>";
+  return '<div class="replis">' + h + "</div>";
+}
+
+// cmpVersion range deux versions par leurs nombres, pour l'affichage.
+function cmpVersion(a, b) {
+  var x = String(a).replace(/^v/, "").split(/[-+]/)[0].split("."), y = String(b).replace(/^v/, "").split(/[-+]/)[0].split(".");
+  for (var i = 0; i < Math.max(x.length, y.length); i++) {
+    var d = (parseInt(x[i], 10) || 0) - (parseInt(y[i], 10) || 0);
+    if (d) return d < 0 ? -1 : 1;
+  }
+  return 0;
+}
+
 function depItem(g, goVersion) {
   var n = g.list.length, engines = [], reach = false, notCalled = false, fix = "";
+  var targets = [], commands = [], noFix = 0, anyFix = "";
   g.list.forEach(function (f) {
     var ctx = evidenceOf(f, "contexte");
     evidenceOf(f, "engine").forEach(function (e) { if (engines.indexOf(e) < 0) engines.push(e); });
     if (ctx.indexOf("appele") >= 0) reach = true;
     if (ctx.indexOf("non_appele") >= 0) notCalled = true;
+    evidenceOf(f, "version_cible").forEach(function (v) { if (targets.indexOf(v) < 0) targets.push(v); });
+    evidenceOf(f, "commande").forEach(function (c) { if (commands.indexOf(c) < 0) commands.push(c); });
+    if (evidenceOf(f, "sans_correctif").length && !evidenceOf(f, "corrige_en").length) noFix++;
+    if (!anyFix && f.remediation) anyFix = f.remediation;
     if (evidenceOf(f, "engine").indexOf("govulncheck") >= 0) {
       // Rapport d'avant le pre-tri: la gravite haute disait l'appel.
       if (!ctx.length && (f.severity === "high" || f.severity === "critical")) reach = true;
@@ -1866,8 +1954,10 @@ function depItem(g, goVersion) {
           + "<span>" + esc(f.title) + (ids.length ? " <code>" + esc(ids.slice(0, 3).join(", ")) + "</code>" : "") + "</span></li>";
   });
   body += "</ul>";
-  if (fix) body += "<p>" + esc(fix) + "</p>";
-  h += '<details class="plus"><summary>vulnérabilités</summary><div class="plus-corps">' + body + "</div></details>";
+  targets.sort(cmpVersion);
+  // Sans version calculee (rapport plus ancien, paquet absent de la base), le
+  // conseil du rapport reste, celui de govulncheck d'abord.
+  h += depFolds(body, depFix(g, targets, commands, noFix, targets.length || commands.length || noFix ? "" : fix || anyFix));
 
   if (reach) {
     h += '<p class="base"><b>govulncheck trouve un appel au code fautif.</b> Vérifie l\'impact, puis propose la mise à jour.</p>';
@@ -2068,11 +2158,14 @@ function refreshItem(id) {
   if (!f) return;
   for (i = 0; i < items.length; i++) {
     if (items[i].getAttribute("data-id") === id) {
-      var was = items[i].querySelector("details");
       var holder = document.createElement("ol");
       holder.innerHTML = findingItem(f, shown());
-      var fresh = holder.firstChild, now = fresh.querySelector("details");
-      if (was && now) now.open = was.open;
+      var fresh = holder.firstChild;
+      // Chaque repli garde son etat, details comme correction.
+      Array.prototype.forEach.call(items[i].querySelectorAll("details[data-pli]"), function (was) {
+        var now = fresh.querySelector('details[data-pli="' + was.getAttribute("data-pli") + '"]');
+        if (now) now.open = was.open;
+      });
       items[i].parentNode.replaceChild(fresh, items[i]);
       bindAudit(fresh);
       return;

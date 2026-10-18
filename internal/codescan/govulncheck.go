@@ -183,6 +183,12 @@ func (g Govulncheck) ScanBuild(ctx context.Context, dir string) ([]finding.Findi
 		if nothingToBuild(res) {
 			continue
 		}
+		// Seulement en compilation croisee: sur la machine, le meme message
+		// peut venir d'un paquet cgo sans cgo, ce qui n'a rien de normal.
+		if !st.sys.native && excludedBuild(res) {
+			failed = append(failed, where(st)+": "+excludedBuildText)
+			continue
+		}
 		run, err := interpretGovulncheckRun(res)
 		if err != nil {
 			failed = append(failed, where(st)+": "+err.Error())
@@ -243,6 +249,17 @@ func nothingToBuild(res toolResult) bool {
 	return res.exitCode != 0 && (strings.Contains(res.stderr, msg) || strings.Contains(res.stderrTail, msg))
 }
 
+// excludedBuild reconnait un module dont un paquet importe un autre reserve a
+// un autre systeme: un installeur Windows, par exemple, ne se compile pas pour
+// Linux. Le message de Go est long et parle de nom de paquet invalide, le
+// rapport dit plus simplement ce qui se passe.
+func excludedBuild(res toolResult) bool {
+	const msg = "build constraints exclude all Go files"
+	return res.exitCode != 0 && (strings.Contains(res.stderr, msg) || strings.Contains(res.stderrTail, msg))
+}
+
+const excludedBuildText = "ne se compile pas pour ce systeme, du code y est reserve a un autre (contraintes de build). Normal pour un module propre a un systeme"
+
 // interpretGovulncheck lit le code de sortie avant le flux. En mode -json,
 // govulncheck sort en 0 quel que soit le nombre de vulnerabilites trouvees:
 // tout autre code est une panne, meme si un debut de flux a ete ecrit.
@@ -285,6 +302,28 @@ type gvcOSV struct {
 	Details    string         `json:"details"`
 	Aliases    []string       `json:"aliases"`
 	References []gvcReference `json:"references"`
+	Affected   []osvAffected  `json:"affected"`
+}
+
+// noFixFor dit que l'entree decrit le module mod et ne publie aucune version
+// corrigee. Un module que l'entree ne decrit pas (remplace par un fork, par
+// exemple) n'en dit rien: la version corrigee reste inconnue.
+func (o gvcOSV) noFixFor(mod string) bool {
+	known := false
+	for _, a := range o.Affected {
+		if a.Package.Name != mod {
+			continue
+		}
+		for _, r := range a.Ranges {
+			known = true
+			for _, e := range r.Events {
+				if e.Fixed != "" {
+					return false
+				}
+			}
+		}
+	}
+	return known
 }
 
 type gvcReference struct {
@@ -324,7 +363,7 @@ type gvcRun struct {
 	// module est le dossier du module analyse, relatif au depot.
 	module string
 	osvs   map[string]gvcOSV
-	best   map[string]gvcFinding
+	best   map[gvcKey]gvcFinding
 	sbom   *gvcSBOM
 }
 
@@ -343,7 +382,7 @@ func parseGovulncheck(raw []byte) ([]finding.Finding, error) {
 // retient le plus specifique.
 func readGovulncheck(raw []byte) (gvcRun, error) {
 	dec := json.NewDecoder(bytes.NewReader(raw))
-	run := gvcRun{osvs: map[string]gvcOSV{}, best: map[string]gvcFinding{}}
+	run := gvcRun{osvs: map[string]gvcOSV{}, best: map[gvcKey]gvcFinding{}}
 	for {
 		var msg gvcMessage
 		if err := dec.Decode(&msg); err == io.EOF {
@@ -355,7 +394,7 @@ func readGovulncheck(raw []byte) (gvcRun, error) {
 		case msg.OSV != nil:
 			run.osvs[msg.OSV.ID] = *msg.OSV
 		case msg.Finding != nil:
-			id := msg.Finding.OSV
+			id := gvcKey{msg.Finding.OSV, vulnModule(*msg.Finding)}
 			prev, seen := run.best[id]
 			if !seen || moreSpecific(*msg.Finding, prev) {
 				run.best[id] = *msg.Finding
@@ -367,15 +406,30 @@ func readGovulncheck(raw []byte) (gvcRun, error) {
 	return run, nil
 }
 
-// mergeRuns fusionne les executions par vulnerabilite: la trace la plus
+// gvcKey designe une vulnerabilite dans un module: une meme entree peut
+// toucher x/net et stdlib, chacun a sa mise a jour.
+type gvcKey struct{ osv, module string }
+
+// vulnModule rend le module touche d'un constat, sans sa version.
+func vulnModule(f gvcFinding) string {
+	for _, fr := range f.Trace {
+		if fr.Module != "" {
+			return fr.Module
+		}
+	}
+	return ""
+}
+
+// mergeRuns fusionne les executions par vulnerabilite et par module touche: la trace la plus
 // specifique l'emporte, et le constat dit dans quels modules et sous quels
 // systemes le code fautif est appele, module par module.
 func mergeRuns(runs []gvcRun) []finding.Finding {
 	osvByID := map[string]gvcOSV{}
-	best := map[string]gvcFinding{}
+	best := map[gvcKey]gvcFinding{}
 	var mods []string                         // modules analyses, dans l'ordre
 	analysed := map[string][]string{}         // module -> systemes analyses
-	reach := map[string]map[string][]string{} // vulnerabilite -> module -> systemes
+	reach := map[gvcKey]map[string][]string{} // vulnerabilite -> module -> systemes
+	foundIn := map[gvcKey][]string{}          // vulnerabilite -> modules ou elle est relevee
 	for _, r := range runs {
 		if !containsStr(mods, r.module) {
 			mods = append(mods, r.module)
@@ -391,6 +445,9 @@ func mergeRuns(runs []gvcRun) []finding.Finding {
 			if !seen || moreSpecific(f, prev) {
 				best[id] = f
 			}
+			if !containsStr(foundIn[id], r.module) {
+				foundIn[id] = append(foundIn[id], r.module)
+			}
 			if !f.reachable() {
 				continue
 			}
@@ -403,11 +460,16 @@ func mergeRuns(runs []gvcRun) []finding.Finding {
 		}
 	}
 
-	ids := make([]string, 0, len(best))
+	ids := make([]gvcKey, 0, len(best))
 	for id := range best {
 		ids = append(ids, id)
 	}
-	sort.Strings(ids)
+	sort.Slice(ids, func(i, j int) bool {
+		if ids[i].osv != ids[j].osv {
+			return ids[i].osv < ids[j].osv
+		}
+		return ids[i].module < ids[j].module
+	})
 
 	var out []finding.Finding
 	for _, id := range ids {
@@ -430,7 +492,15 @@ func mergeRuns(runs []gvcRun) []finding.Finding {
 				where = append(where, strings.Join(part, " "))
 			}
 		}
-		out = append(out, projectVuln(osvByID[id], best[id], where))
+		v := projectVuln(osvByID[id.osv], best[id], where)
+		// Le go.mod de chaque module ou la faille est relevee: la commande de
+		// mise a jour se lance dans son dossier (voir fixCommands).
+		for _, m := range foundIn[id] {
+			if m != "" {
+				v.Evidence = append(v.Evidence, finding.Evidence{Type: "manifest", Data: manifestOf(m)})
+			}
+		}
+		out = append(out, v)
 	}
 	return out
 }
@@ -484,7 +554,7 @@ func projectVuln(osv gvcOSV, f gvcFinding, where []string) finding.Finding {
 		Status:      finding.StatusReview,
 		Target:      &finding.Target{Type: "code", Identifier: topModule(f)},
 		Observed:    observedVuln(reach, f, where),
-		Remediation: remediationVuln(f.FixedVersion),
+		Remediation: remediationVuln(f.FixedVersion, osv.noFixFor(vulnModule(f))),
 		Declared:    finding.Bool(false),
 	}
 
@@ -498,6 +568,15 @@ func projectVuln(osv gvcOSV, f gvcFinding, where []string) finding.Finding {
 	for _, ref := range osv.References {
 		out.Evidence = append(out.Evidence, finding.Evidence{Type: "url", Data: ref.URL})
 	}
+
+	// Sans version corrigee, l'entree OSV dit s'il n'y en a pas de publiee.
+	// Un module remplace par un fork n'y figure pas: rien n'est affirme.
+	if f.FixedVersion != "" {
+		out.Evidence = append(out.Evidence, finding.Evidence{Type: EvidenceFixedIn, Data: strings.TrimPrefix(f.FixedVersion, "v")})
+	} else if osv.noFixFor(vulnModule(f)) {
+		out.Evidence = append(out.Evidence, finding.Evidence{Type: EvidenceNoFix, Data: "oui"})
+	}
+	out.Evidence = append(out.Evidence, finding.Evidence{Type: EvidenceEcosystem, Data: "Go"})
 
 	// Pre-tri: govulncheck est le seul moteur qui sait si le code fautif est
 	// appele. Son avis voyage avec le constat (pretri.go).
@@ -533,11 +612,16 @@ func observedVuln(reach bool, f gvcFinding, where []string) string {
 	return fmt.Sprintf("dependance vulnerable importee: %s", topModule(f))
 }
 
-func remediationVuln(fixed string) string {
-	if fixed != "" {
+func remediationVuln(fixed string, noFix bool) string {
+	switch {
+	case fixed != "":
 		return "Mettre a jour la dependance vers " + fixed + " ou plus recent."
+	case noFix:
+		return "Aucune version corrigee publiee: isoler ou remplacer la dependance."
 	}
-	return "Aucune version corrigee publiee: isoler ou remplacer la dependance."
+	// Un module que l'entree ne decrit pas, souvent un fork mis a la place
+	// par replace: sa version corrigee n'est pas connue.
+	return "Version corrigee inconnue pour ce module, peut-etre remplace par un fork. Voir l'avis du module d'origine."
 }
 
 // topModule rend le module le plus haut de la trace, celui que l'operateur doit

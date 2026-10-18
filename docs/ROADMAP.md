@@ -145,6 +145,11 @@ de ce qui tient.
       version de Go qui compile affichée pour stdlib
 - [x] govulncheck et gosec dans chaque module Go du dépôt, sous-modules
       compris
+- [x] Comment corriger chaque constat, sans modèle de langage. Remède par
+      règle et annotation de faux positif pour le code, version corrigée et
+      commandes de mise à jour pour les dépendances
+- [ ] Comparaison avec l'analyse précédente du même dépôt (corrigés,
+      nouveaux)
 - [ ] Décisions de tri aussi sur les dépendances vulnérables
 - [ ] Bac à sable d'exécution pour analyser un dépôt tiers non fiable
 - [ ] En dernier recours seulement, tri assisté par un modèle de langage

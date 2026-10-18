@@ -435,7 +435,9 @@ Windows seulement, un appel au code fautif que seul le build Linux contient
 passerait inaperçu. Un appel trouvé sous un seul système compte, et le
 constat dit lequel. Un système qui n'a rien à compiler n'est pas un échec.
 Un système qui ne compile pas, souvent un outil qui ne le vise pas, laisse le
-moteur « en partie », avec la raison au survol. Le délai du moteur couvre
+moteur « en partie », avec la raison au survol. Un module dont du code est
+réservé à un autre système, comme un installeur Windows vu depuis Linux, le
+dit en clair plutôt que par le long message de Go. Le délai du moteur couvre
 les trois systèmes, et s'il tombe, ce qui est fini reste dans le rapport.
 
 semgrep tourne avec le jeu de règles `p/default` et `--metrics=off`. Son mode
@@ -649,8 +651,9 @@ Il ne retire aucun constat et ne change aucune gravité.
   n'écrivent ni `go.mod` ni `go.sum`. Il faut que les deux le disent. Un
   module introuvable ou un dépôt vendorisé ne donne aucune réponse plutôt
   qu'une fausse. Ces dépendances sont rangées dans « dépendances
-  inutilisées », repliées. Une vulnérabilité qui touche aussi un module
-  importé, stdlib ou un autre `go.mod` reste dans la liste.
+  inutilisées », repliées. Une vulnérabilité qui touche plusieurs paquets
+  fait un constat par paquet. Celui du module inutilisé se range à part,
+  celui de stdlib ou d'un module importé reste dans la liste.
 - Pour stdlib, osv-scanner lit la version de Go écrite dans `go.mod`. La page
   et la ligne de commande donnent celle qui a compilé pour govulncheck.
 
@@ -675,6 +678,53 @@ rang, une décision sur l'une ne vaut pas pour l'autre. Les décisions sont gard
 seul sous Linux et macOS. Un fichier abîmé n'est jamais écrasé, l'interface
 le dit. Deux Quaero ouverts en même temps ne s'effacent pas leurs décisions. Quand Quaero écoute sur toutes les interfaces, le tri est fermé comme
 les rapports.
+
+### Corriger
+
+Chaque constat a un repli « comment corriger », à côté de « détails ». Le
+conseil vient d'un guide écrit règle par règle, sans modèle de langage. Le
+même constat donne toujours le même conseil, et rien ne quitte la machine.
+
+- Pour le code, le remède de la règle, pour gosec et les règles semgrep
+  courantes. Une règle que le guide ne connaît pas garde le conseil général.
+  Quand la règle semgrep propose elle-même une correction de la ligne, elle
+  est donnée telle quelle.
+- « faux positif » dit quand le constat n'en est pas un, et comment le dire
+  dans le code pour que l'analyse suivante ne le relève plus.
+  `// #nosec G204 -- raison` en fin de ligne pour gosec,
+  `// nosemgrep: <règle>` sur la ligne d'avant pour semgrep, dans la syntaxe
+  du fichier, `#` en Python, YAML ou Dockerfile, `{/* */}` dans du JSX,
+  `<!-- -->` en HTML. Un constat relevé par les deux moteurs demande les
+  deux annotations. La raison écrite sert à la relecture.
+- Pour une dépendance, la plus haute des versions corrigées de ses
+  vulnérabilités, d'après la base OSV et govulncheck. C'est celle qui les
+  corrige toutes. Deux copies du même paquet sur deux branches (5.7.1 et
+  6.3.0) ont chacune la leur, monter 5.7.1 en 6.x changerait d'API. Une même
+  CVE qui touche plusieurs paquets ne mélange pas leurs versions.
+- Suivent les commandes qui y passent, quand le manifeste le permet.
+  `go -C cmd/console get module@v0.38.0` puis `go mod tidy` pour chaque
+  `go.mod` qui la requiert. `npm update` pour un `package-lock.json`, qui
+  reste dans les versions que permet `package.json`, sinon c'est la
+  dépendance qui l'amène qui doit monter. `cargo update` de cette copie pour
+  un `Cargo.lock`. Pour pip, yarn, pnpm ou poetry, la version cible suffit,
+  la commande dépend de l'outil du projet. Quaero ne les lance jamais, elles
+  se relisent puis se lancent à la racine du dépôt. Une commande n'est
+  écrite que si le nom, la version et le dossier ne portent aucun caractère
+  qu'un shell pourrait interpréter.
+- Une vulnérabilité sans version corrigée publiée est comptée à part. Si le
+  code fautif est appelé, il reste à isoler ou remplacer la dépendance. Un
+  paquet que la base ne décrit pas garde le conseil général.
+- stdlib n'a pas de commande. Les binaires publiés se compilent avec une
+  version de Go au moins égale à celle indiquée.
+- Une dépendance inutilisée se retire avec `go mod tidy` dans son module.
+
+L'export `.md` reprend la même chose. Le brouillon de signalement, en
+anglais, donne la version et les commandes pour une dépendance, et la
+correction proposée par la règle pour le code.
+
+Ce qui est corrigé n'apparaît plus à l'analyse suivante. Un rapport
+enregistré garde ce qu'il a vu le jour de l'analyse. Les décisions de tri
+restent dans `~/.quaero/tri.json` et reviennent si la même ligne réapparaît.
 
 ## Structure
 

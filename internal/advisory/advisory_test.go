@@ -151,3 +151,38 @@ func TestBrouillonDossierLocal(t *testing.T) {
 		t.Errorf("fusion absente du brouillon:\n%s", d)
 	}
 }
+
+// Le brouillon propose la version qui corrige et la commande, ou la correction
+// que la regle donne pour la ligne signalee.
+func TestBrouillonCorrection(t *testing.T) {
+	rep := finding.NewReport(finding.Tool{Name: "quaero", Version: "test"}, "h", nil)
+	dep := finding.Finding{ID: "QRO-VULN-GO-1", Title: "x/net", Severity: finding.SeverityHigh, Status: finding.StatusReview,
+		Target: &finding.Target{Type: "dependency", Identifier: "golang.org/x/net@0.35.0"},
+		Evidence: []finding.Evidence{{Type: "version_cible", Data: "0.38.0"},
+			{Type: "commande", Data: "go get golang.org/x/net@v0.38.0"}, {Type: "commande", Data: "go mod tidy"}}}
+	code := finding.Finding{ID: "QRO-SEMGREP-x", Title: "md5", Severity: finding.SeverityLow, Status: finding.StatusReview,
+		Target:   &finding.Target{Type: "code", Identifier: "a.go:2"},
+		Evidence: []finding.Evidence{{Type: "correctif", Data: "sha256.New()"}}}
+	rep.Add(dep)
+	rep.Add(code)
+	if d := Draft(rep, dep); !strings.Contains(d, "Upgrade the dependency to `0.38.0` or later") ||
+		!strings.Contains(d, "```\ngo get golang.org/x/net@v0.38.0\ngo mod tidy\n```") {
+		t.Errorf("dependance:\n%s", d)
+	}
+	if d := Draft(rep, code); !strings.Contains(d, "The rule proposes this replacement for the reported line:\n\n```\nsha256.New()\n```") {
+		t.Errorf("code:\n%s", d)
+	}
+}
+
+// Une version venue d'un rapport importe ne ferme pas le code en ligne pour
+// glisser un lien dans le brouillon.
+func TestBrouillonVersionEchappee(t *testing.T) {
+	rep := finding.NewReport(finding.Tool{Name: "quaero", Version: "test"}, "h", nil)
+	dep := finding.Finding{ID: "QRO-OSV-x", Title: "x", Severity: finding.SeverityLow, Status: finding.StatusReview,
+		Target:   &finding.Target{Type: "dependency", Identifier: "x@1.0.0"},
+		Evidence: []finding.Evidence{{Type: "version_cible", Data: "1.0` [x](https://evil) `"}}}
+	rep.Add(dep)
+	if d := Draft(rep, dep); !strings.Contains(d, "to `1.0' [x](https://evil) '` or later") {
+		t.Errorf("version non echappee:\n%s", d)
+	}
+}
