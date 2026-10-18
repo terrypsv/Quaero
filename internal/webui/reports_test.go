@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -215,5 +217,41 @@ func TestEnregistrementChoisiAvant(t *testing.T) {
 	}
 	if n := len(listOf(t, h).Reports); n != 1 {
 		t.Errorf("%d rapports, attendu 1", n)
+	}
+}
+
+// Le bouton ouvre le dossier des rapports, et lui seul: aucun chemin ne vient
+// de la requete. Sans ouvreur, ou en GET, rien ne s'ouvre.
+func TestOuvrirLeDossier(t *testing.T) {
+	s, h, _ := reportServer(t)
+	s.Reports.Dir = filepath.Join(s.Reports.Dir, "pas-encore-cree")
+	var opened []string
+	s.OpenDir = func(dir string) error { opened = append(opened, dir); return nil }
+	h = withSession(s.Handler())
+
+	var list struct {
+		Open bool `json:"open"`
+	}
+	if err := json.Unmarshal(get(h, "/api/reports").Body.Bytes(), &list); err != nil || !list.Open {
+		t.Fatalf("bouton non propose: %v %+v", err, list)
+	}
+	if rec := get(h, "/api/reports/open"); rec.Code != http.StatusMethodNotAllowed {
+		t.Errorf("GET: %d", rec.Code)
+	}
+	rec := post(h, "/api/reports/open", url.Values{"dir": {`C:\Windows`}}, ourOrigin)
+	if rec.Code != http.StatusOK || len(opened) != 1 || opened[0] != s.Reports.Dir {
+		t.Fatalf("ouverture: %d %v", rec.Code, opened)
+	}
+	if info, err := os.Stat(s.Reports.Dir); err != nil || !info.IsDir() {
+		t.Errorf("dossier non cree avant ouverture: %v", err)
+	}
+	if rec := post(h, "/api/reports/open", nil, "http://ailleurs.example"); rec.Code == http.StatusOK || len(opened) != 1 {
+		t.Errorf("autre origine: %d %v", rec.Code, opened)
+	}
+
+	s.OpenDir = nil
+	h = withSession(s.Handler())
+	if rec := post(h, "/api/reports/open", nil, ourOrigin); rec.Code != http.StatusNotImplemented {
+		t.Errorf("sans ouvreur: %d", rec.Code)
 	}
 }

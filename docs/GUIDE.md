@@ -162,7 +162,9 @@ côté du logotype. Huit exemples tirés de la sécurité sont proposés sous la
 barre, pris dans une cinquantaine, et un test vérifie que chacun se lit sans
 mot perdu. Après une recherche, chaque critère compris s'affiche avec sa
 valeur (mot-clé, langage, popularité, fraîcheur), les mots laissés de côté
-sont expliqués, et la requête envoyée reste visible.
+sont expliqués, et la requête envoyée reste visible. La phrase d'en-tête et
+les exemples cèdent alors la place à la liste, et reviennent quand la
+question est effacée.
 
 Chaque dépôt tient en trois lignes, nom et santé, description, puis étoiles,
 langage, licence et date du dernier envoi. La santé se lit en quatre carrés,
@@ -211,7 +213,9 @@ chaque seconde. Relancé, Quaero attend deux secondes et demie. Si l'onglet se
 manifeste, il reprend tout seul et aucun autre ne s'ouvre, sinon Quaero ouvre
 le navigateur. Un onglet resté en arrière-plan longtemps peut être ralenti par
 le navigateur, Quaero en ouvre alors un second. Si le jeton a changé, l'ancien
-onglet affiche une seule ligne, « Session fermée ».
+onglet affiche une seule ligne, « Session fermée ». Si le Quaero relancé est
+une autre version, l'onglet se recharge de lui-même, pour ne pas garder
+l'interface de la précédente.
 
 Ce qui change un état (lancer ou annuler une analyse) n'accepte que `POST`, et
 seulement depuis la page elle-même. `SameSite` ne distingue pas les ports. Une
@@ -294,7 +298,8 @@ pas d'autre, et dix pages de cent au plus, la limite de GitHub.
 
 Tant que tout n'est pas chargé, un bloc propose de resserrer la liste avec ce
 que contiennent les dépôts chargés eux-mêmes, chacun avec le nombre de dépôts
-qui le portent.
+qui le portent. Les critères sont repliés sous « affiner », qui nomme ceux
+qui sont proposés, et le bloc garde son état d'une page à l'autre.
 
 | Critère | Ce qu'il ajoute à la requête |
 |---------|------------------------------|
@@ -536,10 +541,14 @@ Lancer reste un geste à part.
   le quota de l'API GitHub, le clone passe par git.
 - Un échec se dit en une ligne, selon le cas. Dépôt privé ou inexistant, jeton
   sans accès au dépôt, jeton refusé, github.com injoignable ou git absent.
-- « préparer le signalement » ouvre le brouillon d'un constat sous celui-ci,
-  le même que `-advisory`, à copier ou à enregistrer en `.md`, avec le lien
-  du formulaire de signalement privé du dépôt sur GitHub. Ce formulaire
-  n'existe que si le mainteneur l'a activé, sinon `SECURITY.md` dit où écrire.
+- Chaque constat tient en trois lignes. Le titre, puis l'endroit et les
+  gestes de tri sur la même ligne, puis les détails à déplier.
+- « préparer le signalement » apparaît une fois le constat confirmé, puisqu'un
+  constat non confirmé ne se signale pas. Il ouvre le brouillon sous le
+  constat, le même que `-advisory`, à copier ou à enregistrer en `.md`, avec
+  le lien du formulaire de signalement privé du dépôt sur GitHub. Ce
+  formulaire n'existe que si le mainteneur l'a activé, sinon `SECURITY.md` dit
+  où écrire. Quand le tri n'est pas disponible, le bouton est là d'emblée.
 
 ### Rapports enregistrés
 
@@ -562,6 +571,8 @@ citer du code privé.
   « fermer » y revient. Les filtres et « préparer le signalement » marchent
   comme après une analyse.
 - « supprimer » efface le fichier, après confirmation.
+- « ouvrir le dossier » ouvre le dossier des rapports dans l'explorateur de
+  fichiers. Il ouvre ce dossier et aucun autre.
 - « importer un rapport » range un fichier écrit par `-scan-json`, sur cette
   machine ou une autre, jusqu'à 20 Mo et 50 000 constats. Un fichier déposé
   n'importe où sur la page fait de même, plusieurs à la fois si besoin. Seul

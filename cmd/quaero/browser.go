@@ -40,3 +40,30 @@ func openBrowser(url string) error {
 	go func() { _ = cmd.Wait() }()
 	return nil
 }
+
+// folderCommand rend la commande qui ouvre dir dans l'explorateur de fichiers
+// du systeme. Le dossier est celui des rapports, fixe par Quaero.
+func folderCommand(goos, dir string) (string, []string) {
+	switch goos {
+	case "windows":
+		return "explorer", []string{dir}
+	case "darwin":
+		return "open", []string{dir}
+	default:
+		return "xdg-open", []string{dir}
+	}
+}
+
+// openFolder ouvre dir sans attendre. explorer.exe sort en 1 meme quand il a
+// ouvert la fenetre: seul l'echec du lancement compte.
+func openFolder(dir string) error {
+	name, args := folderCommand(runtime.GOOS, dir)
+	// #nosec G204 -- binaire fixe par systeme, dossier des rapports fixe par Quaero
+	// nosemgrep: go.lang.security.audit.dangerous-exec-command.dangerous-exec-command
+	cmd := exec.Command(name, args...)
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	go func() { _ = cmd.Wait() }()
+	return nil
+}

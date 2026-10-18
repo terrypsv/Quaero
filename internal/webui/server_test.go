@@ -348,6 +348,11 @@ func TestVersionEndpoint(t *testing.T) {
 	if !strings.Contains(rec.Body.String(), "test") {
 		t.Errorf("version absente: %s", rec.Body.String())
 	}
+	// L'identifiant de la page suit son contenu: un onglet ouvert le compare
+	// apres une relance pour savoir s'il doit se recharger.
+	if len(pageID) != 12 || !strings.Contains(rec.Body.String(), `"page":"`+pageID+`"`) {
+		t.Errorf("identifiant de page absent: %q %s", pageID, rec.Body.String())
+	}
 }
 
 // En francais, les mots partent tels qu'ils ont ete tapes, pour trouver les
