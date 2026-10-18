@@ -160,7 +160,7 @@ func projectSemgrep(r semgrepResult) finding.Finding {
 		Status:      finding.StatusReview,
 		Target:      &finding.Target{Type: "code", Identifier: loc},
 		Observed:    firstLine(r.Extra.Message),
-		Remediation: "Revoir le motif signale et corriger ou justifier l'exception.",
+		Remediation: genericRemediation,
 		Declared:    finding.Bool(false),
 	}
 	if code := strings.TrimSpace(r.Extra.Lines); code != "" {

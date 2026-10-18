@@ -363,3 +363,31 @@ func TestOrdrePEP440(t *testing.T) {
 		t.Error("ecritures equivalentes")
 	}
 }
+
+// Un rapport enregistre avant le guide le recoit en se rouvrant. Une regle
+// inconnue renvoie a sa description et garde son annotation. Rien ne se pose
+// deux fois.
+func TestRemedeSurRapportAncien(t *testing.T) {
+	rep := finding.NewReport(finding.Tool{Name: "quaero", Version: "ancienne"}, "h", nil)
+	known := codeAt("QRO-GOSEC-G304-a-go-3", "a.go:3", "gosec", finding.SeverityMedium, "CWE-22")
+	known.Title, known.Remediation = "G304: Potential file inclusion via variable", genericRemediation
+	unknown := codeAt("QRO-GOSEC-G999-b-go-4", "b.go:4", "gosec", finding.SeverityLow, "")
+	unknown.Title, unknown.Remediation = "G999: Nouvelle regle", genericRemediation
+	dep := finding.Finding{ID: "QRO-OSV-GO-1-x", Target: &finding.Target{Type: "dependency", Identifier: "x@1.0.0"},
+		References: []finding.Reference{{Framework: "OSV", ID: "GO-1"}}, Remediation: "Mettre a jour la dependance vers une version corrigee, ou la remplacer."}
+	rep.Add(known)
+	rep.Add(unknown)
+	rep.Add(dep)
+	Remedies(rep)
+	Remedies(rep)
+	if f := rep.Findings[0]; !strings.Contains(f.Remediation, "os.OpenRoot") || len(evidenceOf(f, EvidenceException)) != 1 {
+		t.Errorf("G304: %q %v", f.Remediation, evidenceOf(f, EvidenceException))
+	}
+	if f := rep.Findings[1]; !strings.Contains(f.Remediation, "Pas de remède écrit") ||
+		!reflect.DeepEqual(evidenceOf(f, EvidenceException), []string{"Si le motif est voulu. Le dire dans le code avec « // #nosec G999 -- raison » en fin de ligne."}) {
+		t.Errorf("regle inconnue: %q %v", f.Remediation, evidenceOf(f, EvidenceException))
+	}
+	if f := rep.Findings[2]; f.Remediation != dep.Remediation || len(f.Evidence) != 0 {
+		t.Errorf("dependance touchee: %+v", f)
+	}
+}

@@ -51,6 +51,11 @@ const maxContextBytes = 64 << 10
 type Store struct {
 	Dir string
 
+	// Enrich complete un rapport relu, par exemple avec le guide de
+	// correction d'une version de Quaero plus recente que le rapport. Il peut
+	// etre nil.
+	Enrich func(*finding.Report)
+
 	mu    sync.Mutex // garde cache
 	cache map[string]cached
 
@@ -262,7 +267,11 @@ func (s *Store) Load(id string) (*finding.Report, error) {
 	if err != nil {
 		return nil, ErrNotFound
 	}
-	return Parse(data)
+	rep, err := Parse(data)
+	if err == nil && s.Enrich != nil {
+		s.Enrich(rep)
+	}
+	return rep, err
 }
 
 // Delete efface le rapport id. Un fichier tenu par un autre programme se dit

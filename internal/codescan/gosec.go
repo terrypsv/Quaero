@@ -179,7 +179,7 @@ func projectGosec(iss gosecIssue) finding.Finding {
 		Status:      finding.StatusReview,
 		Target:      &finding.Target{Type: "code", Identifier: loc},
 		Observed:    fmt.Sprintf("%s (confiance %s)", iss.Details, strings.ToLower(iss.Confidence)),
-		Remediation: "Revoir le motif signale et corriger ou justifier l'exception.",
+		Remediation: genericRemediation,
 		Declared:    finding.Bool(false),
 	}
 	if strings.TrimSpace(iss.Code) != "" {
