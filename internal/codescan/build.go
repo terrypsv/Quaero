@@ -38,10 +38,10 @@ const maxGoModBytes = 1 << 20
 // maximale d'une ligne de commande Windows.
 const whyBatch = 200
 
-// unusedModules rend les modules du go.mod racine qu'aucun paquet du depot
-// n'importe. Il rend nil des que la reponse n'est pas sure: go absent ou trop
-// ancien, go.mod illisible, depot vendorise, module introuvable, commande en
-// echec ou module sans reponse.
+// unusedModules rend les modules requis par le go.mod de dir qu'aucun paquet du
+// module n'importe. Il rend nil des que la reponse n'est pas sure: go absent ou
+// trop ancien, go.mod illisible, module vendorise, module introuvable, commande
+// en echec ou module sans reponse.
 func unusedModules(ctx context.Context, dir string) map[string]bool {
 	// Un depot vendorise se compile sans telecharger: les deux commandes, elles,
 	// telechargeraient des modules que l'analyse n'a jamais demandes.
@@ -209,12 +209,13 @@ func parseWhy(out string) map[string]bool {
 }
 
 // unusedIDs rend les identifiants publics dont tous les constats, avant fusion,
-// portent sur une dependance inutilisee du go.mod racine. dedupe regroupe les
+// portent sur une dependance inutilisee d'un go.mod du depot. unused porte, par
+// go.mod, les modules que rien n'importe. dedupe regroupe les
 // constats qui partagent un identifiant, de proche en proche, sans garder leur
 // manifeste ni leur module: une vulnerabilite qui touche aussi stdlib, un autre
 // go.mod ou un module compile ne doit pas se ranger a part sous le nom d'un
 // module inutilise.
-func unusedIDs(found []finding.Finding, unused map[string]bool) map[string]bool {
+func unusedIDs(found []finding.Finding, unused map[string]map[string]bool) map[string]bool {
 	if len(unused) == 0 {
 		return nil
 	}
@@ -244,7 +245,7 @@ func unusedIDs(found []finding.Finding, unused map[string]bool) map[string]bool 
 		if len(ids) == 0 {
 			continue
 		}
-		if p := rootGoDependency(f); p == "" || !unused[p] {
+		if manifest, mod := goDependency(f); mod == "" || !unused[manifest][mod] {
 			blocked[root(ids[0])] = true
 		}
 	}
@@ -279,32 +280,31 @@ func tagUnused(kept []finding.Finding, ids map[string]bool) {
 	}
 }
 
-// rootGoDependency rend le chemin du module d'un constat osv-scanner tire du
-// go.mod a la racine du depot, ou "". Un go.mod plus bas est un autre module,
-// que go mod why ne regarde pas depuis la racine. stdlib n'est jamais un module
-// a retirer.
-func rootGoDependency(f finding.Finding) string {
+// goDependency rend le go.mod et le module d'un constat osv-scanner tire d'un
+// go.mod du depot, ou deux chaines vides. Le go.mod n'est retenu que s'il est
+// interroge (voir unusedIDs). stdlib n'est jamais un module a retirer.
+func goDependency(f finding.Finding) (manifest, mod string) {
 	if f.Target == nil || f.Target.Type != "dependency" {
-		return ""
+		return "", ""
 	}
-	manifest := ""
 	for _, e := range f.Evidence {
 		if e.Type == "manifest" {
 			if manifest != "" && manifest != e.Data {
-				return ""
+				return "", ""
 			}
 			manifest = e.Data
 		}
 	}
-	if path.Clean(manifest) != "go.mod" {
-		return ""
+	manifest = path.Clean(manifest)
+	if path.Base(manifest) != "go.mod" || strings.HasPrefix(manifest, "../") || path.IsAbs(manifest) {
+		return "", ""
 	}
-	mod := f.Target.Identifier
+	mod = f.Target.Identifier
 	if i := strings.LastIndexByte(mod, '@'); i > 0 {
 		mod = mod[:i]
 	}
 	if mod == "stdlib" {
-		return ""
+		return "", ""
 	}
-	return mod
+	return manifest, mod
 }

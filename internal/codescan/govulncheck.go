@@ -95,10 +95,11 @@ func (s goSystem) env(ctx context.Context) context.Context {
 type goFacts struct {
 	// goVersion est la version de Go qui a compile, pas celle du go.mod.
 	goVersion string
-	// unused porte les modules du go.mod qu'aucun paquet du depot n'importe,
-	// tests compris, quels que soient le systeme et les tags (voir build.go).
-	// nil si la question n'a pas pu etre posee.
-	unused map[string]bool
+	// unused porte, par go.mod du depot (« go.mod », « cmd/x/go.mod »), les
+	// modules requis qu'aucun paquet n'importe, tests compris, quels que
+	// soient le systeme et les tags (voir build.go). Un go.mod absent de la
+	// carte n'a pas pu etre interroge.
+	unused map[string]map[string]bool
 }
 
 // Scan execute govulncheck sur dir et normalise sa sortie.
@@ -107,31 +108,72 @@ func (g Govulncheck) Scan(ctx context.Context, dir string) ([]finding.Finding, e
 	return fs, err
 }
 
-// ScanBuild execute govulncheck pour chaque systeme, fusionne les constats et
-// rend aussi ce qu'il a appris du depot.
+// ScanBuild execute govulncheck pour chaque module Go du depot et chaque
+// systeme, fusionne les constats et rend aussi ce qu'il a appris du depot.
 //
-// Un systeme en echec n'annule pas les autres, le rapport dit lequel manque.
-// Hors de la machine, c'est le plus souvent un depot qui ne vise pas ce
-// systeme. Un systeme sans rien a compiler n'est pas un echec. Le delai du
-// moteur couvre tous les systemes: s'il tombe, ce qui est fini reste.
+// Un module ou un systeme en echec n'annule pas les autres, le rapport dit
+// lequel manque. Hors de la machine, c'est le plus souvent un depot qui ne vise
+// pas ce systeme. Un systeme sans rien a compiler n'est pas un echec. Le delai
+// du moteur couvre tout: s'il tombe, ce qui est fini reste.
 func (g Govulncheck) ScanBuild(ctx context.Context, dir string) ([]finding.Finding, *goFacts, error) {
 	bin, err := resolveBin(g.bin())
 	if err != nil {
 		return nil, nil, err
 	}
-	facts := &goFacts{}
+	ctx = goWorkOff(ctx)
+	all, more := GoModules(dir)
+	// Les modules d'exemple, de test ou de code tiers ne sont pas livres: un
+	// appel au code fautif y ferait passer la faille pour appelee.
+	var mods []string
+	for _, m := range all {
+		if !offProductModule(m) {
+			mods = append(mods, m)
+		}
+	}
+	switch {
+	case len(all) == 0:
+		mods = []string{"."}
+	case len(mods) == 0:
+		return []finding.Finding{nothingToCheck("govulncheck",
+			"seuls des modules d'exemple, de test ou de code tiers: "+strings.Join(all, ", "),
+			"Ces modules ne sont pas livres, leurs dependances restent dans la liste d'osv-scanner.")}, nil, nil
+	}
+	capped := len(mods) > MaxGoModules
+	if capped {
+		mods = mods[:MaxGoModules]
+	}
+	facts := &goFacts{unused: map[string]map[string]bool{}}
 	systems := systemsFor(runtime.GOOS)
+	type step struct {
+		mod string
+		sys goSystem
+	}
+	// La machine d'abord pour chaque module, puis les systemes croises: un
+	// delai qui tombe ne coute jamais l'analyse de la machine d'un module.
+	var steps []step
+	for _, sys := range systems {
+		for _, m := range mods {
+			steps = append(steps, step{m, sys})
+		}
+	}
 	var runs []gvcRun
 	var failed []string
-	for i, sys := range systems {
+	where := func(st step) string {
+		if l := moduleLabel(st.mod); l != "" {
+			return l + ", " + st.sys.label
+		}
+		return st.sys.label
+	}
+	for i, st := range steps {
+		mdir := moduleDir(dir, st.mod)
 		// -json rend un flux d'objets; -C fixe le dossier de travail sans
 		// dependre du cwd du processus appelant. On vise tout le module.
-		args := append(append([]string{}, g.pre...), "-json", "-C", dir, "./...")
-		res, err := runTool(sys.env(ctx), bin, dir, args...)
+		args := append(append([]string{}, g.pre...), "-json", "-C", mdir, "./...")
+		res, err := runTool(st.sys.env(ctx), bin, mdir, args...)
 		if err != nil {
 			if errors.Is(err, context.DeadlineExceeded) && len(runs) > 0 {
-				for _, rest := range systems[i:] {
-					failed = append(failed, rest.label+": interrompu, delai maximal atteint")
+				for _, rest := range steps[i:] {
+					failed = append(failed, where(rest)+": interrompu, delai maximal atteint")
 				}
 				break
 			}
@@ -143,10 +185,10 @@ func (g Govulncheck) ScanBuild(ctx context.Context, dir string) ([]finding.Findi
 		}
 		run, err := interpretGovulncheckRun(res)
 		if err != nil {
-			failed = append(failed, sys.label+": "+err.Error())
+			failed = append(failed, where(st)+": "+err.Error())
 			continue
 		}
-		run.system = sys.label
+		run.system, run.module = st.sys.label, st.mod
 		if facts.goVersion == "" && run.sbom != nil {
 			facts.goVersion = run.sbom.GoVersion
 		}
@@ -158,13 +200,28 @@ func (g Govulncheck) ScanBuild(ctx context.Context, dir string) ([]finding.Findi
 	// go mod why vient apres les analyses: il ne lit que le graphe des
 	// modules, c'est rapide, et un delai qui tombe ne coute pas l'analyse de
 	// la machine.
-	if ctx.Err() == nil {
-		facts.unused = unusedModules(ctx, dir)
+	for _, m := range mods {
+		if ctx.Err() != nil {
+			break
+		}
+		if u := unusedModules(ctx, moduleDir(dir, m)); u != nil {
+			facts.unused[manifestOf(m)] = u
+		}
+	}
+	if capped {
+		failed = append(failed, fmt.Sprintf("%d modules analyses au plus, les suivants non", MaxGoModules))
+	}
+	if more {
+		failed = append(failed, "recherche des go.mod arretee, depot trop grand")
 	}
 	if len(runs) == 0 {
-		return []finding.Finding{nothingToCheck("govulncheck",
+		fs := []finding.Finding{nothingToCheck("govulncheck",
 			"aucun paquet Go a compiler pour Linux, macOS ni Windows",
-			"Verifier que le depot contient du code Go hors des tests.")}, facts, nil
+			"Verifier que le depot contient du code Go hors des tests.")}
+		if len(failed) > 0 {
+			fs = append(fs, partialScan("govulncheck", failed))
+		}
+		return fs, facts, nil
 	}
 	fs := mergeRuns(runs)
 	if len(failed) > 0 {
@@ -172,6 +229,10 @@ func (g Govulncheck) ScanBuild(ctx context.Context, dir string) ([]finding.Findi
 	}
 	return fs, facts, nil
 }
+
+// handlesDeadline dit que govulncheck garde ce qui est fini quand le delai
+// tombe.
+func (Govulncheck) handlesDeadline() {}
 
 // nothingToBuild reconnait govulncheck qui ne trouve aucun paquet a compiler
 // pour ce systeme: tous les fichiers en sont exclus par leurs contraintes de
@@ -260,6 +321,8 @@ func (f gvcFinding) reachable() bool {
 // gvcRun est ce qu'une execution de govulncheck a rendu, pour un systeme.
 type gvcRun struct {
 	system string
+	// module est le dossier du module analyse, relatif au depot.
+	module string
 	osvs   map[string]gvcOSV
 	best   map[string]gvcFinding
 	sbom   *gvcSBOM
@@ -305,13 +368,21 @@ func readGovulncheck(raw []byte) (gvcRun, error) {
 }
 
 // mergeRuns fusionne les executions par vulnerabilite: la trace la plus
-// specifique l'emporte, et le constat dit sous quels systemes le code fautif
-// est appele.
+// specifique l'emporte, et le constat dit dans quels modules et sous quels
+// systemes le code fautif est appele, module par module.
 func mergeRuns(runs []gvcRun) []finding.Finding {
 	osvByID := map[string]gvcOSV{}
 	best := map[string]gvcFinding{}
-	reachOn := map[string][]string{}
+	var mods []string                         // modules analyses, dans l'ordre
+	analysed := map[string][]string{}         // module -> systemes analyses
+	reach := map[string]map[string][]string{} // vulnerabilite -> module -> systemes
 	for _, r := range runs {
+		if !containsStr(mods, r.module) {
+			mods = append(mods, r.module)
+		}
+		if r.system != "" && !containsStr(analysed[r.module], r.system) {
+			analysed[r.module] = append(analysed[r.module], r.system)
+		}
 		for id, o := range r.osvs {
 			osvByID[id] = o
 		}
@@ -320,8 +391,14 @@ func mergeRuns(runs []gvcRun) []finding.Finding {
 			if !seen || moreSpecific(f, prev) {
 				best[id] = f
 			}
-			if f.reachable() && r.system != "" {
-				reachOn[id] = append(reachOn[id], r.system)
+			if !f.reachable() {
+				continue
+			}
+			if reach[id] == nil {
+				reach[id] = map[string][]string{}
+			}
+			if !containsStr(reach[id][r.module], r.system) {
+				reach[id][r.module] = append(reach[id][r.module], r.system)
 			}
 		}
 	}
@@ -334,15 +411,47 @@ func mergeRuns(runs []gvcRun) []finding.Finding {
 
 	var out []finding.Finding
 	for _, id := range ids {
-		var systems []string
-		// Les systemes ne se nomment que s'ils different: appele partout, la
-		// precision n'apporte rien.
-		if len(reachOn[id]) < len(runs) {
-			systems = reachOn[id]
+		var where []string
+		for _, m := range mods {
+			sys, ok := reach[id][m]
+			if !ok {
+				continue
+			}
+			var part []string
+			// Le module ne se nomme que s'il y en a plusieurs, les systemes
+			// que s'ils different de ceux analyses pour ce module.
+			if len(mods) > 1 {
+				part = append(part, "dans le "+orRoot(moduleLabel(m)))
+			}
+			if r := nonEmpty(sys); len(r) > 0 && len(r) < len(analysed[m]) {
+				part = append(part, "sous "+joinFr(r))
+			}
+			if len(part) > 0 {
+				where = append(where, strings.Join(part, " "))
+			}
 		}
-		out = append(out, projectVuln(osvByID[id], best[id], systems))
+		out = append(out, projectVuln(osvByID[id], best[id], where))
 	}
 	return out
+}
+
+func nonEmpty(list []string) []string {
+	var out []string
+	for _, s := range list {
+		if s != "" {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+func containsStr(list []string, s string) bool {
+	for _, x := range list {
+		if x == s {
+			return true
+		}
+	}
+	return false
 }
 
 // moreSpecific prefere une trace atteignable, puis la plus longue.
@@ -353,7 +462,7 @@ func moreSpecific(a, b gvcFinding) bool {
 	return len(a.Trace) > len(b.Trace)
 }
 
-func projectVuln(osv gvcOSV, f gvcFinding, systems []string) finding.Finding {
+func projectVuln(osv gvcOSV, f gvcFinding, where []string) finding.Finding {
 	reach := f.reachable()
 
 	severity := finding.SeverityMedium
@@ -374,7 +483,7 @@ func projectVuln(osv gvcOSV, f gvcFinding, systems []string) finding.Finding {
 		Severity:    severity,
 		Status:      finding.StatusReview,
 		Target:      &finding.Target{Type: "code", Identifier: topModule(f)},
-		Observed:    observedVuln(reach, f, systems),
+		Observed:    observedVuln(reach, f, where),
 		Remediation: remediationVuln(f.FixedVersion),
 		Declared:    finding.Bool(false),
 	}
@@ -408,18 +517,18 @@ func projectVuln(osv gvcOSV, f gvcFinding, systems []string) finding.Finding {
 	return out
 }
 
-func observedVuln(reach bool, f gvcFinding, systems []string) string {
+func observedVuln(reach bool, f gvcFinding, where []string) string {
 	if reach {
 		fr := f.Trace[0]
 		loc := ""
 		if fr.Position != nil {
 			loc = fmt.Sprintf(" (%s:%d)", fr.Position.Filename, fr.Position.Line)
 		}
-		where := ""
-		if len(systems) > 0 {
-			where = " sous " + joinFr(systems)
+		at := ""
+		if len(where) > 0 {
+			at = " " + strings.Join(where, ", ")
 		}
-		return fmt.Sprintf("symbole vulnerable atteignable%s: %s%s", where, fr.Function, loc)
+		return fmt.Sprintf("symbole vulnerable atteignable%s: %s%s", at, fr.Function, loc)
 	}
 	return fmt.Sprintf("dependance vulnerable importee: %s", topModule(f))
 }

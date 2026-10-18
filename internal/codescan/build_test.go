@@ -5,11 +5,13 @@ package codescan
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -30,7 +32,12 @@ func TestGvcHelperProcess(t *testing.T) {
 	if goos == "" {
 		goos = runtime.GOOS
 	}
-	switch out := os.Getenv("QUAERO_GVC_" + goos); out {
+	key := "QUAERO_GVC_" + goos
+	// Un sous-module repond par sa propre variable, s'il en a une.
+	if wd, err := os.Getwd(); err == nil && os.Getenv(key+"_"+filepath.Base(wd)) != "" {
+		key += "_" + filepath.Base(wd)
+	}
+	switch out := os.Getenv(key); out {
 	case "!rien":
 		os.Stderr.WriteString("go: downloading example.com/x v1.0.0\ngovulncheck: no packages matched the provided patterns\n")
 		os.Exit(2)
@@ -318,11 +325,18 @@ func TestDependanceInutilisee(t *testing.T) {
 		// GO-D touche x/crypto et stdlib: dedupe les fusionne.
 		osvDep("golang.org/x/crypto", "0.33.0", "go.mod", "GO-D"),
 		osvDep("stdlib", "1.25", "go.mod", "GO-D"),
-		// GO-E: x/crypto ici, x/net dans un autre go.mod, relies par un alias.
+		// GO-E: x/crypto ici, x/net dans un go.mod non interroge, relies par un
+		// alias.
 		osvDep("golang.org/x/crypto", "0.33.0", "go.mod", "GO-E"),
 		osvDep("golang.org/x/net", "0.35.0", "tools/go.mod", "GHSA-E", "GO-E"),
+		// Un sous-module interroge a ses propres modules inutilises.
+		osvDep("golang.org/x/text", "0.22.0", "cmd/console/go.mod", "GO-G"),
+		osvDep("golang.org/x/text", "0.22.0", "go.mod", "GO-H"),
 	}}
-	unused := map[string]bool{"golang.org/x/crypto": true, "golang.org/x/net": true}
+	unused := map[string]map[string]bool{
+		"go.mod":             {"golang.org/x/crypto": true, "golang.org/x/net": true},
+		"cmd/console/go.mod": {"golang.org/x/text": true},
+	}
 	gvc := buildFake{fakeScanner: fakeScanner{name: "govulncheck", available: true}, facts: &goFacts{goVersion: "go1.27.2", unused: unused}}
 
 	rep, err := RunWith(context.Background(), t.TempDir(), "test", Options{}, osv, gvc)
@@ -335,7 +349,7 @@ func TestDependanceInutilisee(t *testing.T) {
 			tagged[f.References[0].ID] = true
 		}
 	}
-	if want := map[string]bool{"GO-A": true, "GO-B": true}; !reflect.DeepEqual(tagged, want) {
+	if want := map[string]bool{"GO-A": true, "GO-B": true, "GO-G": true}; !reflect.DeepEqual(tagged, want) {
 		t.Errorf("inutilisees: %v, attendu %v", tagged, want)
 	}
 	if got := rep.Run.Context["go_compile"]; got != "go1.27.2" {
@@ -343,5 +357,187 @@ func TestDependanceInutilisee(t *testing.T) {
 	}
 	if !OffProduct(ContextUnused) {
 		t.Error("dependance inutilisee non rangee a part")
+	}
+}
+
+// Les modules du depot: la racine d'abord, puis le produit du moins profond au
+// plus profond, puis les exemples, sans le code recopie, les jeux d'essai, les
+// dossiers caches, ni ce qu'un lien designe. Un go.work n'y change rien.
+func TestModulesDuDepot(t *testing.T) {
+	root := t.TempDir()
+	for _, d := range []string{".", "installer/windows/app", "cmd/console", "examples/demo", "vendor/x", "testdata/y", ".cache/z", "_ancien/w", "web/node_modules/k"} {
+		if err := os.MkdirAll(filepath.Join(root, d), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(root, d, "go.mod"), []byte("module x\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if runtime.GOOS != "windows" {
+		ailleurs := t.TempDir()
+		_ = os.WriteFile(filepath.Join(ailleurs, "go.mod"), []byte("module y\n"), 0o644)
+		_ = os.Symlink(ailleurs, filepath.Join(root, "lien"))
+	}
+	want := []string{".", "cmd/console", "installer/windows/app", "examples/demo"}
+	if mods, more := GoModules(root); !reflect.DeepEqual(mods, want) || more {
+		t.Errorf("modules %v %v, attendu %v", mods, more, want)
+	}
+	_ = os.WriteFile(filepath.Join(root, "go.work"), []byte("go 1.21\n"), 0o644)
+	if mods, _ := GoModules(root); !reflect.DeepEqual(mods, want) {
+		t.Errorf("avec go.work: %v", mods)
+	}
+	// Un depot geant: la recherche s'arrete et le dit.
+	old := maxWalkEntries
+	maxWalkEntries = 5
+	defer func() { maxWalkEntries = old }()
+	if _, more := GoModules(root); !more {
+		t.Error("recherche non bornee")
+	}
+}
+
+// Chaque module s'analyse avec son propre go.mod, sans l'espace de travail.
+func TestEnvSansEspaceDeTravail(t *testing.T) {
+	ctx := goWorkOff(withScanEnv(context.Background(), hardenedEnv()))
+	if got := runEnvHelper(t, ctx, "GOWORK"); got != "off" {
+		t.Errorf("GOWORK = %q", got)
+	}
+}
+
+// Un module d'exemple n'est pas livre: un appel au code fautif n'y compte pas.
+// Un depot qui n'a que des exemples le dit.
+func TestModulesExemplesIgnores(t *testing.T) {
+	root := t.TempDir()
+	_ = os.MkdirAll(filepath.Join(root, "examples", "demo"), 0o755)
+	_ = os.WriteFile(filepath.Join(root, "examples", "demo", "go.mod"), []byte("module d\n"), 0o644)
+	g := fakeGovulncheck(t, map[string]string{"linux": sbomStream, "darwin": sbomStream, "windows": sbomStream})
+	for _, sys := range []string{"linux", "darwin", "windows"} {
+		t.Setenv("QUAERO_GVC_"+sys+"_demo", sbomStream+gvcOSVEntry+gvcCalled)
+	}
+	fs, _, err := g.ScanBuild(context.Background(), root)
+	if err != nil || len(fs) != 1 || fs[0].ID != "QRO-SCAN-VIDE-govulncheck" {
+		t.Fatalf("depot d'exemples: %v %+v", err, fs)
+	}
+	_ = os.WriteFile(filepath.Join(root, "go.mod"), []byte("module r\n"), 0o644)
+	fs, _, err = g.ScanBuild(context.Background(), root)
+	if err != nil || len(fs) != 0 {
+		t.Errorf("appel dans un exemple compte: %v %+v", err, fs)
+	}
+}
+
+// Le delai tombe pendant les systemes croises: l'analyse de la machine de
+// chaque module est deja faite et reste.
+func TestDelaiGardeChaqueModule(t *testing.T) {
+	root := t.TempDir()
+	_ = os.MkdirAll(filepath.Join(root, "cmd", "console"), 0o755)
+	_ = os.WriteFile(filepath.Join(root, "go.mod"), []byte("module r\n"), 0o644)
+	_ = os.WriteFile(filepath.Join(root, "cmd", "console", "go.mod"), []byte("module c\n"), 0o644)
+	streams := map[string]string{"linux": "!dort", "darwin": "!dort", "windows": "!dort"}
+	streams[runtime.GOOS] = sbomStream + gvcOSVEntry + gvcCalled
+	g := fakeGovulncheck(t, streams)
+	other := `{"osv":{"id":"GO-2026-2","summary":"autre"}}
+{"finding":{"osv":"GO-2026-2","trace":[{"module":"golang.org/x/net","version":"v0.1.0","package":"golang.org/x/net/html","function":"Parse","position":{"filename":"main.go","line":4}}]}}
+`
+	t.Setenv("QUAERO_GVC_"+runtime.GOOS+"_console", sbomStream+other)
+	for _, sys := range []string{"linux", "darwin", "windows"} {
+		if sys != runtime.GOOS {
+			t.Setenv("QUAERO_GVC_"+sys+"_console", "!dort")
+		}
+	}
+	rep, err := RunWith(context.Background(), root, "test", Options{Timeout: 8 * time.Second}, g)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ids := map[string]bool{}
+	for _, f := range rep.Findings {
+		ids[f.ID] = true
+	}
+	if !ids["QRO-VULN-GO-2026-1"] || !ids["QRO-VULN-GO-2026-2"] || !ids["QRO-SCAN-PARTIEL-govulncheck"] {
+		t.Errorf("constats %v", ids)
+	}
+}
+
+// Le code fautif appele dans un sous-module est vu, et le constat dit lequel.
+func TestGovulncheckParModule(t *testing.T) {
+	root := t.TempDir()
+	console := filepath.Join(root, "cmd", "console")
+	_ = os.MkdirAll(console, 0o755)
+	_ = os.WriteFile(filepath.Join(root, "go.mod"), []byte("module r\n"), 0o644)
+	_ = os.WriteFile(filepath.Join(console, "go.mod"), []byte("module c\n"), 0o644)
+	g := fakeGovulncheck(t, map[string]string{"linux": sbomStream, "darwin": sbomStream, "windows": sbomStream})
+	for _, sys := range []string{"linux", "darwin", "windows"} {
+		t.Setenv("QUAERO_GVC_"+sys+"_console", sbomStream+gvcOSVEntry+gvcModuleOnly+gvcCalled)
+	}
+	fs, _, err := g.ScanBuild(context.Background(), root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(fs) != 1 || !hasContext(fs[0], ContextCalled) || !strings.Contains(fs[0].Observed, "dans le module cmd/console:") {
+		t.Errorf("sous-module: %+v", fs)
+	}
+}
+
+// TestGosecHelperProcess n'est pas un test: c'est un faux gosec qui releve une
+// ligne du dossier ou il tourne, en chemin absolu comme le vrai.
+func TestGosecHelperProcess(t *testing.T) {
+	if os.Getenv("QUAERO_GOSEC_HELPER") != "1" {
+		return
+	}
+	wd, _ := os.Getwd()
+	if os.Getenv("QUAERO_GOSEC_DORT") == filepath.Base(wd) {
+		time.Sleep(time.Minute)
+	}
+	file, _ := json.Marshal(filepath.Join(wd, "a.go"))
+	os.Stdout.WriteString(`{"Issues":[{"severity":"HIGH","confidence":"HIGH","rule_id":"G204","details":"x","file":` + string(file) + `,"line":"3","cwe":{"id":"78"}}]}`)
+	os.Exit(1)
+}
+
+// gosec passe dans chaque module, et les chemins restent ceux du depot.
+func TestGosecParModule(t *testing.T) {
+	root := t.TempDir()
+	_ = os.MkdirAll(filepath.Join(root, "cmd", "console"), 0o755)
+	_ = os.WriteFile(filepath.Join(root, "go.mod"), []byte("module r\n"), 0o644)
+	_ = os.WriteFile(filepath.Join(root, "cmd", "console", "go.mod"), []byte("module c\n"), 0o644)
+	t.Setenv("QUAERO_GOSEC_HELPER", "1")
+	g := Gosec{Bin: os.Args[0], pre: []string{"-test.run=^TestGosecHelperProcess$", "--"}}
+	fs, err := g.Scan(context.Background(), root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var where []string
+	for _, f := range fs {
+		where = append(where, f.Target.Identifier)
+	}
+	sort.Strings(where)
+	if want := []string{"a.go:3", "cmd/console/a.go:3"}; !reflect.DeepEqual(where, want) {
+		t.Errorf("endroits %v, attendu %v", where, want)
+	}
+}
+
+// gosec garde les modules finis quand le delai tombe.
+func TestGosecDelaiGardeLesModulesFinis(t *testing.T) {
+	root := t.TempDir()
+	_ = os.MkdirAll(filepath.Join(root, "cmd", "console"), 0o755)
+	_ = os.WriteFile(filepath.Join(root, "go.mod"), []byte("module r\n"), 0o644)
+	_ = os.WriteFile(filepath.Join(root, "cmd", "console", "go.mod"), []byte("module c\n"), 0o644)
+	t.Setenv("QUAERO_GOSEC_HELPER", "1")
+	t.Setenv("QUAERO_GOSEC_DORT", "console")
+	g := Gosec{Bin: os.Args[0], pre: []string{"-test.run=^TestGosecHelperProcess$", "--"}}
+	rep, err := RunWith(context.Background(), root, "test", Options{Timeout: 6 * time.Second}, g)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var where []string
+	partial := false
+	for _, f := range rep.Findings {
+		if f.ID == "QRO-SCAN-PARTIEL-gosec" {
+			partial = strings.Contains(f.Observed, "module cmd/console: interrompu")
+			continue
+		}
+		if f.Target != nil {
+			where = append(where, f.Target.Identifier)
+		}
+	}
+	if !reflect.DeepEqual(where, []string{"a.go:3"}) || !partial {
+		t.Errorf("endroits %v, partiel %v: %+v", where, partial, rep.Findings)
 	}
 }

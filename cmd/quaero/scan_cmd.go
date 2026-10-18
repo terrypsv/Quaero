@@ -52,14 +52,15 @@ func resolveScanTarget(ctx context.Context, target string) (dir, label string, u
 
 // selectScanners choisit les moteurs selon ce que contient le depot. Semgrep et
 // osv-scanner couvrent la plupart des langages et se declenchent partout; les
-// moteurs specifiques a Go ne s'ajoutent que si un go.mod est present, pour ne
-// pas faire tourner un outil Go sur un projet qui ne l'est pas.
+// moteurs specifiques a Go ne s'ajoutent que si le depot porte un module Go, a
+// la racine ou plus bas, pour ne pas faire tourner un outil Go sur un projet
+// qui ne l'est pas.
 func selectScanners(dir string) []codescan.Scanner {
 	scanners := []codescan.Scanner{
 		codescan.Semgrep{},    // SAST multi-langages
 		codescan.OSVScanner{}, // dependances vulnerables, tous ecosystemes
 	}
-	if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
+	if mods, _ := codescan.GoModules(dir); len(mods) > 0 {
 		scanners = append(scanners,
 			codescan.Govulncheck{}, // dependances Go, avec atteignabilite
 			codescan.Gosec{},       // motifs non surs propres a Go

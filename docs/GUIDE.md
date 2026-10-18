@@ -409,9 +409,23 @@ partagé. Les moteurs sont choisis selon ce que contient le dépôt.
 | gosec | Go | motifs non sûrs propres à Go |
 
 semgrep et osv-scanner se déclenchent partout; govulncheck et gosec ne
-s'ajoutent que si un `go.mod` est présent. semgrep est le seul des quatre à
-pouvoir relever une faille encore inconnue, les autres retrouvent des
-vulnérabilités déjà publiées.
+s'ajoutent que si le dépôt contient un module Go, à la racine ou plus bas.
+semgrep est le seul des quatre à pouvoir relever une faille encore inconnue,
+les autres retrouvent des vulnérabilités déjà publiées.
+
+Un dépôt peut porter plusieurs modules Go, un `go.mod` à la racine et un autre
+pour une console ou un installeur dans un sous-dossier. `./...` s'arrête à la
+frontière d'un module, alors govulncheck et gosec passent dans chacun, la
+racine d'abord, vingt au plus. Les dossiers `vendor`, `testdata`,
+`node_modules`, ceux dont le nom commence par un point ou un tiret bas, et les
+liens symboliques sont laissés de côté. Chaque module s'analyse avec son propre
+`go.mod`, sans l'espace de travail d'un `go.work`, qui changerait ses versions.
+govulncheck passe d'abord sur la machine pour tous les modules, puis sur les
+systèmes croisés, pour qu'un délai qui tombe ne coûte jamais l'analyse de la
+machine. Il laisse de côté les modules d'exemple, de test ou de code tiers
+(`examples/`, `third_party/`...), qui ne sont pas livrés, gosec les analyse et
+le pré-tri les range à part. Un appel au code fautif trouvé dans un sous-module
+le dit, et ses chemins restent ceux du dépôt.
 
 govulncheck ne regarde que ce qui compile, tests à part. Un dépôt
 multiplateforme ne compile pas le même code partout, alors Quaero le lance
@@ -627,9 +641,9 @@ Il ne retire aucun constat et ne change aucune gravité.
   faille de CI se signale comme une autre.
 - Pour une dépendance Go, govulncheck dit s'il trouve un appel au code
   fautif. Sans appel, la mise à jour reste à faire, sans urgence.
-- « inutilisée » marque une dépendance du `go.mod` racine qu'aucun paquet du
-  dépôt n'importe, tests compris, quels que soient le système et les tags de
-  build. osv-scanner lit le `go.mod` tel qu'il est écrit, et un module peut y
+- « inutilisée » marque une dépendance d'un `go.mod` du dépôt qu'aucun paquet
+  de ce module n'importe, tests compris, quels que soient le système et les
+  tags de build. osv-scanner lit le `go.mod` tel qu'il est écrit, et un module peut y
   rester après que le code a cessé de s'en servir. Quaero pose la question à
   `go mod tidy -diff` puis à `go mod why -m`, qui n'exécutent rien et
   n'écrivent ni `go.mod` ni `go.sum`. Il faut que les deux le disent. Un

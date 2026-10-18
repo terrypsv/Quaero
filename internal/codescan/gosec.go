@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -20,6 +21,9 @@ import (
 type Gosec struct {
 	// Bin est le nom ou chemin du binaire. Vide, "gosec" est utilise.
 	Bin string
+	// pre precede les arguments: les tests y placent ce qui fait du binaire
+	// de test un faux gosec.
+	pre []string
 }
 
 func (g Gosec) bin() string {
@@ -38,18 +42,73 @@ func (g Gosec) Available() bool {
 	return err == nil
 }
 
-// Scan execute gosec sur dir et normalise sa sortie.
+// Scan execute gosec sur chaque module Go du depot et normalise sa sortie. Les
+// chemins sont ramenes au depot, pas au module. Un module en echec n'efface pas
+// les autres, le rapport dit lequel manque. Si le delai tombe en route, ce qui
+// est fini reste (voir deadlineScanner).
 func (g Gosec) Scan(ctx context.Context, dir string) ([]finding.Finding, error) {
 	bin, err := resolveBin(g.bin())
 	if err != nil {
 		return nil, err
 	}
-	// -fmt=json sur stdout, -quiet pour ne pas melanger du texte au JSON.
-	res, err := runTool(ctx, bin, dir, "-fmt=json", "-quiet", "./...")
-	if err != nil {
-		return nil, err
+	ctx = goWorkOff(ctx)
+	mods, more := GoModules(dir)
+	if len(mods) == 0 {
+		mods = []string{"."}
 	}
-	return interpretGosec(res)
+	var failed []string
+	if len(mods) > MaxGoModules {
+		mods = mods[:MaxGoModules]
+		failed = append(failed, fmt.Sprintf("%d modules analyses au plus, les suivants non", MaxGoModules))
+	}
+	if more {
+		failed = append(failed, "recherche des go.mod arretee, depot trop grand")
+	}
+	var out []finding.Finding
+	ok := 0
+	for i, m := range mods {
+		// -fmt=json sur stdout, -quiet pour ne pas melanger du texte au JSON.
+		args := append(append([]string{}, g.pre...), "-fmt=json", "-quiet", "./...")
+		res, err := runTool(ctx, bin, moduleDir(dir, m), args...)
+		if err != nil {
+			if errors.Is(err, context.DeadlineExceeded) && ok > 0 {
+				for _, rest := range mods[i:] {
+					failed = append(failed, orRoot(moduleLabel(rest))+": interrompu, delai maximal atteint")
+				}
+				break
+			}
+			return nil, err
+		}
+		if err := res.accept(0, 1); err != nil {
+			failed = append(failed, orRoot(moduleLabel(m))+": "+err.Error())
+			continue
+		}
+		fs, err := parseGosecAt(res.stdout, dir)
+		if err != nil {
+			failed = append(failed, orRoot(moduleLabel(m))+": "+err.Error())
+			continue
+		}
+		ok++
+		out = append(out, fs...)
+	}
+	if ok == 0 {
+		return nil, fmt.Errorf("%s", strings.Join(failed, " ; "))
+	}
+	if len(failed) > 0 {
+		out = append(out, partialScan("gosec", failed))
+	}
+	return out, nil
+}
+
+// handlesDeadline dit que gosec garde ce qui est fini quand le delai tombe.
+func (Gosec) handlesDeadline() {}
+
+// orRoot nomme la racine quand le module n'a pas d'autre nom.
+func orRoot(label string) string {
+	if label == "" {
+		return "module racine"
+	}
+	return label
 }
 
 // interpretGosec lit le code de sortie avant le JSON. gosec sort en 1 des qu'il

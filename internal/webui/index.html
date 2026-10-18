@@ -1872,7 +1872,7 @@ function depItem(g, goVersion) {
   if (reach) {
     h += '<p class="base"><b>govulncheck trouve un appel au code fautif.</b> Vérifie l\'impact, puis propose la mise à jour.</p>';
   } else if (unusedDep(g)) {
-    h += '<p class="base">Requise par go.mod, mais aucun paquet du dépôt ne l\'importe, tests compris, quels que soient le système et les tags. '
+    h += '<p class="base">Requise par son go.mod, mais aucun paquet de ce module ne l\'importe, tests compris, quels que soient le système et les tags. '
        + '<code>go mod tidy</code> la retire, rien à signaler.</p>';
   } else if (notCalled) {
     h += '<p class="base">govulncheck ne trouve aucun appel au code fautif. La mise à jour reste à faire, sans urgence.</p>';

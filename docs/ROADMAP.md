@@ -143,6 +143,8 @@ de ce qui tient.
 - [x] govulncheck pour Linux, macOS et Windows depuis n'importe quelle
       machine, dépendances que rien n'importe rangées à part (`go mod why`),
       version de Go qui compile affichée pour stdlib
+- [x] govulncheck et gosec dans chaque module Go du dépôt, sous-modules
+      compris
 - [ ] Décisions de tri aussi sur les dépendances vulnérables
 - [ ] Bac à sable d'exécution pour analyser un dépôt tiers non fiable
 - [ ] En dernier recours seulement, tri assisté par un modèle de langage
