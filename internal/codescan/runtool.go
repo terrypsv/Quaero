@@ -18,10 +18,13 @@ import (
 // toolResult est ce qu'un moteur a rendu: sa sortie standard, un extrait de sa
 // sortie d'erreur et son code de sortie.
 type toolResult struct {
-	name     string
-	stdout   []byte
-	stderr   string
-	exitCode int
+	name   string
+	stdout []byte
+	stderr string
+	// stderrTail est la fin de la sortie d'erreur: un message final peut
+	// suivre des lignes de telechargement que l'extrait de tete coupe.
+	stderrTail string
+	exitCode   int
 	// root est le dossier analyse: les chemins rendus par le moteur sont
 	// ramenes sous lui (voir relTo).
 	root string
@@ -54,10 +57,11 @@ func runTool(ctx context.Context, bin, dir string, args ...string) (toolResult, 
 
 	err := cmd.Run()
 	res := toolResult{
-		name:   filepath.Base(bin),
-		stdout: stdout.Bytes(),
-		stderr: excerpt(stderr.String()),
-		root:   dir,
+		name:       filepath.Base(bin),
+		stdout:     stdout.Bytes(),
+		stderr:     excerpt(stderr.String()),
+		stderrTail: tail(stderr.String()),
+		root:       dir,
 	}
 	if ctxErr := ctx.Err(); ctxErr != nil {
 		return res, ctxErr
@@ -95,6 +99,16 @@ func (r toolResult) failure() error {
 		return fmt.Errorf("%s: code de sortie %d (%s)", r.name, r.exitCode, r.stderr)
 	}
 	return fmt.Errorf("%s: code de sortie %d, sans sortie exploitable", r.name, r.exitCode)
+}
+
+// tail garde la fin de la sortie d'erreur, dans la meme limite qu'excerpt.
+func tail(s string) string {
+	s = strings.TrimSpace(s)
+	const limit = 400
+	if len(s) > limit {
+		return strings.ToValidUTF8(s[len(s)-limit:], "")
+	}
+	return s
 }
 
 // excerpt garde le debut de la sortie d'erreur: assez pour diagnostiquer, pas

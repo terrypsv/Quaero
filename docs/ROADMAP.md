@@ -140,6 +140,9 @@ de ce qui tient.
 - [x] Tri des constats sans modèle de langage, avec des états gardés d'une
       analyse à l'autre (à vérifier, faux positif, confirmé, signalé) et un
       pré-tri par règles (tests, exemples, code généré, CI, atteignabilité)
+- [x] govulncheck pour Linux, macOS et Windows depuis n'importe quelle
+      machine, dépendances que rien n'importe rangées à part (`go mod why`),
+      version de Go qui compile affichée pour stdlib
 - [ ] Décisions de tri aussi sur les dépendances vulnérables
 - [ ] Bac à sable d'exécution pour analyser un dépôt tiers non fiable
 - [ ] En dernier recours seulement, tri assisté par un modèle de langage

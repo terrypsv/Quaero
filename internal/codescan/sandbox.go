@@ -45,6 +45,16 @@ func withScanEnv(ctx context.Context, env []string) context.Context {
 	return context.WithValue(ctx, envKey{}, env)
 }
 
+// withExtraEnv ajoute des variables a celles deja attachees a ctx, apres elles.
+// govulncheck s'en sert pour viser un systeme (GOOS, GOARCH) sans perdre le
+// durcissement d'un scan non fiable.
+func withExtraEnv(ctx context.Context, env ...string) context.Context {
+	base := scanEnv(ctx)
+	all := make([]string, 0, len(base)+len(env))
+	all = append(append(all, base...), env...)
+	return withScanEnv(ctx, all)
+}
+
 // scanEnv rend les variables attachees a ctx, ou nil.
 func scanEnv(ctx context.Context) []string {
 	env, _ := ctx.Value(envKey{}).([]string)

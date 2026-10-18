@@ -400,13 +400,24 @@ partagé. Les moteurs sont choisis selon ce que contient le dépôt.
 |-----------|----------|------------------|
 | semgrep | Go, Python, JS/TS, Java, PHP, Ruby, C... | motifs de code non sûrs |
 | osv-scanner | tous écosystèmes (npm, PyPI, Go, Maven, crates...) | dépendances vulnérables connues (base OSV) |
-| govulncheck | Go | dépendances vulnérables, et si le symbole fautif est *atteignable* |
+| govulncheck | Go | dépendances vulnérables, et si le symbole fautif est *atteignable*, sous Linux, macOS et Windows |
 | gosec | Go | motifs non sûrs propres à Go |
 
 semgrep et osv-scanner se déclenchent partout; govulncheck et gosec ne
 s'ajoutent que si un `go.mod` est présent. semgrep est le seul des quatre à
 pouvoir relever une faille encore inconnue, les autres retrouvent des
 vulnérabilités déjà publiées.
+
+govulncheck ne regarde que ce qui compile, tests à part. Un dépôt
+multiplateforme ne compile pas le même code partout, alors Quaero le lance
+pour Linux, macOS et Windows. La machine passe d'abord, telle quelle, puis
+les deux autres systèmes en compilation croisée, sans cgo. Analysé sous
+Windows seulement, un appel au code fautif que seul le build Linux contient
+passerait inaperçu. Un appel trouvé sous un seul système compte, et le
+constat dit lequel. Un système qui n'a rien à compiler n'est pas un échec.
+Un système qui ne compile pas, souvent un outil qui ne le vise pas, laisse le
+moteur « en partie », avec la raison au survol. Le délai du moteur couvre
+les trois systèmes, et s'il tombe, ce qui est fini reste dans le rapport.
 
 semgrep tourne avec le jeu de règles `p/default` et `--metrics=off`. Son mode
 `auto` est évité: il repose sur l'envoi de métriques, dont une empreinte de
@@ -507,8 +518,9 @@ Lancer reste un geste à part.
 - Une analyse à la fois, annulable. Une seconde demande est refusée, pas mise
   en file. Fermer l'onglet ne l'arrête pas, le bouton « annuler » si, et
   Ctrl+C dans le terminal l'arrête et efface son clone avant de quitter.
-- Les moteurs s'affichent avec leur durée, ou absents, ou en échec. Un rapport
-  sans constat ne vaut que si les moteurs ont tourné, et la page le dit.
+- Les moteurs s'affichent avec leur durée, ou absents, en échec, ou en partie.
+  Survoler un moteur en donne la raison. Un rapport sans constat ne vaut que si
+  les moteurs ont tourné, et la page le dit.
 - Les vulnérabilités publiées d'une même dépendance tiennent sur une seule
   ligne, avec leur nombre. Elles sont déjà connues, la réponse est une mise à
   jour par une PR ordinaire, pas un signalement privé. Quand govulncheck trouve
@@ -595,6 +607,18 @@ Il ne retire aucun constat et ne change aucune gravité.
   faille de CI se signale comme une autre.
 - Pour une dépendance Go, govulncheck dit s'il trouve un appel au code
   fautif. Sans appel, la mise à jour reste à faire, sans urgence.
+- « inutilisée » marque une dépendance du `go.mod` racine qu'aucun paquet du
+  dépôt n'importe, tests compris, quels que soient le système et les tags de
+  build. osv-scanner lit le `go.mod` tel qu'il est écrit, et un module peut y
+  rester après que le code a cessé de s'en servir. Quaero pose la question à
+  `go mod tidy -diff` puis à `go mod why -m`, qui n'exécutent rien et
+  n'écrivent ni `go.mod` ni `go.sum`. Il faut que les deux le disent. Un
+  module introuvable ou un dépôt vendorisé ne donne aucune réponse plutôt
+  qu'une fausse. Ces dépendances sont rangées dans « dépendances
+  inutilisées », repliées. Une vulnérabilité qui touche aussi un module
+  importé, stdlib ou un autre `go.mod` reste dans la liste.
+- Pour stdlib, osv-scanner lit la version de Go écrite dans `go.mod`. La page
+  et la ligne de commande donnent celle qui a compilé pour govulncheck.
 
 La ligne de commande affiche les mêmes étiquettes après chaque titre, et
 compte les constats rangés à part. Elle annonce l'analyse dès son départ,
