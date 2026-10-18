@@ -150,6 +150,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/scan/cancel", s.handleScanCancel)
 	mux.HandleFunc("/api/scan/advisory", s.handleScanAdvisory)
 	mux.HandleFunc("/api/scan/save", s.handleScanSave)
+	mux.HandleFunc("/api/scan/export", s.handleScanExport)
 	mux.HandleFunc("/api/reports", s.handleReports)
 	mux.HandleFunc("/api/reports/view", s.handleReportView)
 	mux.HandleFunc("/api/reports/import", s.handleReportImport)

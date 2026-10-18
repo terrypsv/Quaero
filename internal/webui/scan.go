@@ -521,6 +521,29 @@ func (s *Server) handleScanAdvisory(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// handleScanExport rend une analyse, ou un rapport rouvert, en Markdown lisible
+// sans Quaero, avec le tri deja fait et un nom de fichier tire de la cible et
+// de la date. La page le telecharge, rien n'est ecrit par Quaero.
+func (s *Server) handleScanExport(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		methodNotAllowed(w, "GET, HEAD")
+		return
+	}
+	rep, ok := s.reportFor(r.URL.Query().Get("id"))
+	if !ok {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "aucun rapport pour cette analyse, relancer l'analyse"})
+		return
+	}
+	var decisions map[string]triage.Decision
+	if s.Triage != nil {
+		decisions = s.Triage.For(rep)
+	}
+	writeJSON(w, http.StatusOK, map[string]string{
+		"text": reports.Markdown(rep, decisions, time.Now()),
+		"file": reports.ExportName(rep),
+	})
+}
+
 func newJobID() string {
 	b := make([]byte, 8)
 	if _, err := rand.Read(b); err != nil {

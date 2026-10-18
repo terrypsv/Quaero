@@ -109,6 +109,23 @@ func TestAnalyseEnregistreeEtRouverte(t *testing.T) {
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "github.com/mushorg/cowrie") {
 		t.Errorf("brouillon depuis un rapport rouvert: %d %s", rec.Code, rec.Body.String())
 	}
+
+	// L'export lisible, de l'analyse comme du rapport rouvert, porte un nom
+	// tire de la cible.
+	for _, id := range []string{job.ID, "r:" + job.Saved} {
+		var out struct{ Text, File string }
+		rec = get(h, "/api/scan/export?id="+url.QueryEscape(id))
+		if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil || rec.Code != http.StatusOK ||
+			!strings.HasPrefix(out.Text, "# Rapport Quaero, mushorg/cowrie") || !strings.HasPrefix(out.File, "mushorg-cowrie_") {
+			t.Errorf("export %s: %d %+v %v", id, rec.Code, out, err)
+		}
+	}
+	if rec := get(h, "/api/scan/export?id=r:absent"); rec.Code != http.StatusNotFound {
+		t.Errorf("export d'un rapport absent: %d", rec.Code)
+	}
+	if !strings.HasPrefix(job.Saved, "mushorg-cowrie_") {
+		t.Errorf("nom du rapport %q", job.Saved)
+	}
 }
 
 func TestImportEtSuppression(t *testing.T) {

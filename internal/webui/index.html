@@ -312,7 +312,12 @@
   .rapport-actions { margin-left: auto; }
   /* Un constat tient en trois lignes: titre, lieu et gestes, details. Les
      gestes sont petits, ils reviennent sur chaque constat. */
-  .constat.depot { padding: 12px 0 10px 14px; gap: 4px; }
+  .constat.depot { padding: 16px 0 14px 14px; gap: 6px; }
+  /* Moteurs et filtres: un bloc aere entre le titre du rapport et la liste. */
+  .outils { display: flex; flex-direction: column; gap: 14px; margin: 24px 0 32px; }
+  .outils .filtres { margin-top: 0; }
+  .outils .filtres > span:first-child { min-width: 70px; }
+  .outils .moteurs { margin-top: 0; }
   .constat .l2 { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 16px; }
   .actions.compactes { gap: 6px; }
   .actions.compactes .choix { min-height: 28px; padding: 0 10px; font-size: 13px; border-width: 1.5px; }
@@ -327,7 +332,7 @@
   details.repli { margin-top: 18px; }
   details.repli > summary { cursor: pointer; padding: 8px 0; font-size: 14px; font-weight: 700; border-bottom: 2px solid var(--encre); }
   details.repli > summary .base { margin-left: 10px; font-weight: 400; }
-  .rapport-rouvert { display: inline-block; margin: 0 0 10px; padding: 2px 10px; background: var(--encre); color: var(--acide); font-size: 12px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
+  .rapport-rouvert { display: inline-block; margin: 0 0 14px; padding: 2px 10px; background: var(--encre); color: var(--acide); font-size: 12px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
   #rapports-msg { margin: 10px 0; }
 
   .pied { flex-shrink: 0; background: var(--encre); color: var(--papier); border-top: 6px solid var(--acide); }
@@ -1747,6 +1752,7 @@ function renderAudit() {
   if ($("annuler")) $("annuler").onclick = cancelScan;
   bindAudit($("audit"));
   bind("#audit [data-save-report]", saveScanReport);
+  bind("#audit [data-export]", exportReport);
   bind("#audit [data-close-view]", function () { setView(null); });
 }
 
@@ -1900,16 +1906,20 @@ function auditResult(job) {
      + ", " + duration(job.elapsed_s) + "</small></h2>";
   // Rien n'est garde sans le demander: la case « Enregistrer le rapport » range
   // l'analyse des sa fin, sinon le bouton « enregistrer » le fait apres coup.
-  var act = "";
-  if (audit.view) act = '<button type="button" class="choix" data-close-view="1">fermer</button>';
-  else if (job.saved_id) act = '<span class="base">enregistré</span>';
+  // « exporter .md » donne un rapport lisible sans Quaero, tri compris.
+  var act = '<button type="button" class="choix" data-export="1">exporter .md</button>';
+  if (audit.view) act += '<button type="button" class="choix" data-close-view="1">fermer</button>';
+  else if (job.saved_id) act += '<span class="base">enregistré</span>';
   else if (audit.reportsOn) {
-    act = (job.save_error ? '<span class="base">' + esc("non enregistré, " + job.save_error) + "</span>" : "")
+    act += (job.save_error ? '<span class="base">' + esc("non enregistré, " + job.save_error) + "</span>" : "")
         + '<button type="button" class="choix" data-save-report="1">enregistrer</button>';
   }
-  if (act) h += '<div class="actions rapport-actions">' + act + "</div>";
+  h += '<div class="actions rapport-actions">' + act + "</div>";
   h += "</div>";
-  h += eng.html;
+  // Moteurs et filtres forment un bloc a part, une ligne chacun, separe du
+  // titre et de la liste.
+  h += '<div class="outils">' + (eng.html ? '<div class="filtres"><span>moteurs</span>' + eng.html + "</div>" : "")
+     + (eng.ok && n ? auditFilters(items) : "") + "</div>";
   if (!eng.ok) {
     return h + '<p class="erreur"><b>rien vérifié</b>' + (eng.failed
       ? "Aucun moteur n'a fini son travail. Survole un moteur en échec pour la raison."
@@ -1918,7 +1928,6 @@ function auditResult(job) {
   if (!n) {
     return h + '<p class="rien">' + (eng.partial ? "Rien relevé, mais un moteur n'a pas tout vérifié." : "Rien relevé par les moteurs.") + "</p>";
   }
-  h += auditFilters(items);
   var f = audit.filter;
   var shown = items.filter(function (it) {
     return (f.sev === "toutes" || it.sev === f.sev) && (f.kind === "tout" || it.kind === f.kind);
@@ -2235,6 +2244,17 @@ function deleteReport(id) {
     // L'analyse dont le rapport vient d'etre efface redevient a enregistrer.
     if (audit.job && audit.job.saved_id === id) loadScan();
   }).catch(panelFail);
+}
+
+// exportReport telecharge l'analyse affichee en Markdown, nommee d'apres sa
+// cible et sa date, avec le tri deja fait.
+function exportReport() {
+  var v = shown();
+  if (!v) return;
+  api("GET", "/api/scan/export?id=" + encodeURIComponent(v.id)).then(function (d) {
+    if (d.status !== 200 || !d.text) { setNotice("export impossible", d.error || String(d.status)); return; }
+    download(d.text, d.file || "rapport-quaero.md", "text/markdown;charset=utf-8");
+  }).catch(function (err) { setNotice(failTitle(err), failText(err)); });
 }
 
 // saveScanReport range l'analyse affichee avec les rapports, a la demande.

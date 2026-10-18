@@ -7,8 +7,10 @@
 // Un rapport decrit des failles encore non corrigees, parfois le code d'un
 // depot prive: il reste dans le dossier de l'utilisateur, lisible par lui
 // seul, et ne part nulle part. Le nom de chaque fichier est tire par Quaero au
-// moment de l'enregistrer, jamais lu dans le rapport, pour qu'un rapport
-// importe ne choisisse ni ou il s'ecrit ni sa place dans la liste.
+// moment de l'enregistrer: le nom court de la cible, ramene a des lettres, des
+// chiffres et des tirets, puis la date et l'heure locales et du hasard
+// (argus_2026-10-18_18-26-57_5aecf4.json). Un rapport importe ne choisit donc
+// ni ou il s'ecrit ni sa place dans la liste, qui suit les dates.
 package reports
 
 import (
@@ -82,9 +84,13 @@ type Entry struct {
 	Seconds  float64   `json:"duree_s"`
 }
 
-// idRe est la forme des noms tires par Quaero: date et heure de
-// l'enregistrement, puis du hasard.
-var idRe = regexp.MustCompile(`^[0-9]{8}-[0-9]{6}-[0-9a-f]{12}$`)
+// idRe est la forme des noms tires par Quaero: le nom court de la cible, la
+// date et l'heure locales de l'enregistrement, puis du hasard. oldIDRe est la
+// forme d'avant, date UTC puis hasard, toujours relue.
+var (
+	idRe    = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?_([0-9]{4}-[0-9]{2}-[0-9]{2}_[0-9]{2}-[0-9]{2}-[0-9]{2})_[0-9a-f]{6}$`)
+	oldIDRe = regexp.MustCompile(`^[0-9]{8}-[0-9]{6}-[0-9a-f]{12}$`)
+)
 
 // Erreurs dites a la page.
 var (
@@ -95,7 +101,20 @@ var (
 
 // ValidID dit si id est un nom de rapport tire par Quaero. Tout autre nom est
 // refuse avant de toucher au disque.
-func ValidID(id string) bool { return idRe.MatchString(id) }
+func ValidID(id string) bool { return idRe.MatchString(id) || oldIDRe.MatchString(id) }
+
+// savedAt rend le moment de l'enregistrement, lu dans le nom tire par Quaero.
+func savedAt(id string) (time.Time, bool) {
+	if oldIDRe.MatchString(id) {
+		t, err := time.Parse("20060102-150405", id[:15])
+		return t, err == nil
+	}
+	if m := idRe.FindStringSubmatch(id); m != nil {
+		t, err := time.ParseInLocation("2006-01-02_15-04-05", m[1], time.Local)
+		return t, err == nil
+	}
+	return time.Time{}, false
+}
 
 func (s *Store) path(id string) string { return filepath.Join(s.Dir, id+".json") }
 
@@ -108,7 +127,8 @@ func (s *Store) Save(rep *finding.Report) (Entry, error) {
 	if len(rep.Findings) > maxFindings {
 		return Entry{}, ErrTooBig
 	}
-	data, err := json.Marshal(rep)
+	// Indente: le fichier se lit dans un editeur de texte, sans Quaero.
+	data, err := json.MarshalIndent(rep, "", "  ")
 	if err != nil {
 		return Entry{}, err
 	}
@@ -122,8 +142,9 @@ func (s *Store) Save(rep *finding.Report) (Entry, error) {
 	// seul l'attribut lecture seule bouge, les droits restent ceux du profil.
 	// #nosec G302 -- c'est un dossier: 0700 est le minimum pour y entrer.
 	_ = os.Chmod(s.Dir, 0o700)
+	target := entryOf("", rep).Target
 	for try := 0; ; try++ {
-		id, err := newID(time.Now())
+		id, err := newID(time.Now(), target)
 		if err != nil {
 			return Entry{}, err
 		}
@@ -287,15 +308,14 @@ func (s *Store) List() ([]Entry, error) {
 // le moment ou il a ete range. Un rapport importe date du futur ne reste pas
 // en tete pour toujours.
 func sortKey(e Entry) time.Time {
-	saved, err := time.Parse("20060102-150405", e.ID[:15])
-	if err != nil || (!e.Date.IsZero() && e.Date.Before(saved)) {
+	saved, ok := savedAt(e.ID)
+	if !ok || (!e.Date.IsZero() && e.Date.Before(saved)) {
 		return e.Date
 	}
 	return saved
 }
 
-// ids rend les noms valides du dossier, du plus recent au plus ancien. Le nom
-// commence par la date d'enregistrement, l'ordre des noms est celui du temps.
+// ids rend les noms valides du dossier. List les range ensuite par date.
 func (s *Store) ids() ([]string, error) {
 	entries, err := os.ReadDir(s.Dir)
 	if errors.Is(err, fs.ErrNotExist) {
@@ -404,11 +424,62 @@ func published(f finding.Finding) bool {
 	return false
 }
 
-// newID tire un nom: la date d'enregistrement, en UTC, puis du hasard.
-func newID(when time.Time) (string, error) {
-	b := make([]byte, 6)
+// newID tire un nom: le nom court de la cible, la date et l'heure locales de
+// l'enregistrement, puis du hasard.
+func newID(when time.Time, target string) (string, error) {
+	b := make([]byte, 3)
 	if _, err := rand.Read(b); err != nil {
 		return "", err
 	}
-	return when.UTC().Format("20060102-150405") + "-" + hex.EncodeToString(b), nil
+	return Slug(target) + "_" + when.Local().Format("2006-01-02_15-04-05") + "_" + hex.EncodeToString(b), nil
+}
+
+// Slug rend le nom court d'une cible, pour un nom de fichier: le depot pour
+// github.com/owner/repo, le dernier dossier pour un chemin, en minuscules,
+// lettres et chiffres sans accent, le reste en tirets, 40 caracteres au plus.
+func Slug(target string) string {
+	t := strings.TrimSpace(target)
+	if rest, ok := cutPrefixFold(t, "github.com/"); ok {
+		t = strings.ReplaceAll(strings.Trim(rest, "/"), "/", "-")
+	} else {
+		parts := strings.FieldsFunc(t, func(r rune) bool { return r == '/' || r == '\\' })
+		if len(parts) > 0 {
+			t = parts[len(parts)-1]
+		}
+	}
+	var b strings.Builder
+	dash := false
+	for _, r := range strings.ToLower(t) {
+		if a, ok := plain[r]; ok {
+			r = a
+		}
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			b.WriteRune(r)
+			dash = false
+		} else if b.Len() > 0 && !dash {
+			b.WriteByte('-')
+			dash = true
+		}
+		if b.Len() >= 40 {
+			break
+		}
+	}
+	out := strings.Trim(b.String(), "-")
+	if out == "" {
+		return "rapport"
+	}
+	return out
+}
+
+// plain ramene les lettres accentuees du francais a leur lettre de base.
+var plain = map[rune]rune{
+	'à': 'a', 'â': 'a', 'ä': 'a', 'ç': 'c', 'é': 'e', 'è': 'e', 'ê': 'e', 'ë': 'e',
+	'î': 'i', 'ï': 'i', 'ô': 'o', 'ö': 'o', 'ù': 'u', 'û': 'u', 'ü': 'u', 'ÿ': 'y',
+}
+
+func cutPrefixFold(s, prefix string) (string, bool) {
+	if len(s) >= len(prefix) && strings.EqualFold(s[:len(prefix)], prefix) {
+		return s[len(prefix):], true
+	}
+	return s, false
 }

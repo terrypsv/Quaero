@@ -557,7 +557,10 @@ gardée dès sa fin, même si l'onglet a été fermé entre-temps, et la case re
 comme tu l'as laissée. Sans la case, l'analyse reste en mémoire jusqu'à la
 suivante, et « enregistrer » sous son titre la garde après coup. Elle va dans `~/.quaero/rapports`, soit
 `%USERPROFILE%\.quaero\rapports` sous Windows, un fichier JSON par analyse au
-même format que `-scan-json`. Sous Linux et macOS, le dossier et les fichiers
+même format que `-scan-json`. Le fichier porte le nom de la cible et la date de
+l'enregistrement, `argus_2026-10-18_18-26-57_5aecf4.json`, et il est indenté
+pour se lire dans un éditeur de texte. Les rapports rangés sous l'ancien nom,
+une date et du hasard, restent dans la liste. Sous Linux et macOS, le dossier et les fichiers
 ne sont lisibles que par toi. Rien n'est écrit sans la case ou le bouton.
 Quand Quaero écoute sur toutes les interfaces (`-addr 0.0.0.0:7777`), les
 rapports ne sont ni gardés ni servis, comme les dossiers locaux. Ils peuvent
@@ -570,6 +573,12 @@ citer du code privé.
   Une étiquette au-dessus du titre le distingue de l'analyse en cours, et
   « fermer » y revient. Les filtres et « préparer le signalement » marchent
   comme après une analyse.
+- « exporter .md », à côté du titre d'une analyse ou d'un rapport rouvert,
+  télécharge un rapport lisible sans Quaero, dans un éditeur de texte ou un
+  lecteur Markdown. Il porte le nom de la cible et la date de l'analyse,
+  `argus_2026-10-18_18h26.md`. Les constats y sont rangés comme sur la page,
+  regroupés par règle, chaque endroit avec son extrait de code et le tri déjà
+  fait, note comprise. Il décrit des failles non corrigées, comme le rapport.
 - « supprimer » efface le fichier, après confirmation.
 - « ouvrir le dossier » ouvre le dossier des rapports dans l'explorateur de
   fichiers. Il ouvre ce dossier et aucun autre.
