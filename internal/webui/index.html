@@ -245,6 +245,7 @@
   .moteur { display: inline-flex; align-items: baseline; gap: 6px; padding: 2px 8px; border: 1.5px solid var(--encre); background: var(--blanc); cursor: default; }
   .moteur small { font-size: 12px; color: var(--gris); font-variant-numeric: tabular-nums; }
   .moteur.manque { border-style: dashed; background: transparent; color: var(--gris); }
+  .moteur.partiel { border-style: dashed; }
   .moteur.panne { background: var(--encre); color: var(--papier); }
   .moteur.panne small { color: var(--acide); }
   .constat .l1 { align-items: center; }
@@ -1421,7 +1422,7 @@ var audit = {
   // view est un rapport enregistre rouvert, montre a la place de l'analyse.
   view: null, viewNote: "", reports: [], reportsDir: "", reportsOn: false,
   // triageOn: Quaero garde les decisions de tri. repli: sections ouvertes.
-  triageOn: false, repli: { essais: false, tiers: false, faux: false }, triQueue: {},
+  triageOn: false, repli: { essais: false, tiers: false, inutilisees: false, faux: false }, triQueue: {},
   filter: { sev: "toutes", kind: "tout" }
 };
 
@@ -1587,17 +1588,19 @@ function engines(rep) {
   };
   (ctx.scanners || []).forEach(function (n) { set(n, "", seconds(durations[n]), ""); });
   (rep.findings || []).forEach(function (f) {
-    var m = /^QRO-SCAN-(ABSENT|ERREUR|VIDE)-(.+)$/.exec(f.id || "");
+    var m = /^QRO-SCAN-(ABSENT|ERREUR|VIDE|PARTIEL)-(.+)$/.exec(f.id || "");
     if (!m) return;
     if (m[1] === "ABSENT") set(m[2], "manque", "absent", f.remediation || "");
     if (m[1] === "ERREUR") set(m[2], "panne", "en échec", f.observed || "");
     if (m[1] === "VIDE") set(m[2], "manque", "rien à lire", f.observed || "");
+    // En partie: le moteur a analyse, mais pas tout. Survole pour savoir quoi.
+    if (m[1] === "PARTIEL") set(m[2], "partiel", "en partie", f.observed || "");
   });
   var ok = 0, failed = 0, partial = false, h = '<div class="moteurs" aria-label="Moteurs">';
   order.forEach(function (n) {
     var e = seen[n];
     if (e.cls) partial = true;
-    else ok++;
+    if (!e.cls || e.cls === "partiel") ok++;
     if (e.cls === "panne") failed++;
     h += '<span class="moteur' + (e.cls ? " " + e.cls : "") + '"' + (e.hint ? ' title="' + esc(e.hint) + '"' : "")
        + ">" + esc(n) + "<small>" + esc(e.text) + "</small></span>";
@@ -1778,9 +1781,16 @@ function auditFilters(items) {
   return h;
 }
 
+// unusedDep dit qu'aucun paquet du depot n'importe la dependance: chacune de
+// ses vulnerabilites porte l'etiquette inutilise.
+function unusedDep(g) {
+  return g.list.every(function (f) { return evidenceOf(f, "contexte").indexOf("inutilise") >= 0; });
+}
+
 // depItem dessine une dependance et ses vulnerabilites publiees. Elles sont
 // deja connues: la reponse est une mise a jour, pas un signalement prive.
-function depItem(g) {
+// goVersion est la version de Go qui a compile le depot pour govulncheck.
+function depItem(g, goVersion) {
   var n = g.list.length, engines = [], reach = false, notCalled = false, fix = "";
   g.list.forEach(function (f) {
     var ctx = evidenceOf(f, "contexte");
@@ -1811,13 +1821,18 @@ function depItem(g) {
 
   if (reach) {
     h += '<p class="base"><b>govulncheck trouve un appel au code fautif.</b> Vérifie l\'impact, puis propose la mise à jour.</p>';
+  } else if (unusedDep(g)) {
+    h += '<p class="base">Requise par go.mod, mais aucun paquet du dépôt ne l\'importe, tests compris, quels que soient le système et les tags. '
+       + '<code>go mod tidy</code> la retire, rien à signaler.</p>';
   } else if (notCalled) {
     h += '<p class="base">govulncheck ne trouve aucun appel au code fautif. La mise à jour reste à faire, sans urgence.</p>';
   } else {
     h += '<p class="base">Déjà publiées. Une mise à jour de la dépendance, par une PR ordinaire, suffit.</p>';
   }
   if (g.name === "stdlib") {
-    h += '<p class="base">osv-scanner lit la version de Go écrite dans go.mod, pas celle qui compile. Compare avec la version de Go réellement utilisée.</p>';
+    h += '<p class="base">osv-scanner lit la version de Go écrite dans go.mod, pas celle qui compile. '
+       + (goVersion ? "Sur cette machine, govulncheck a compilé avec " + esc(String(goVersion).replace(/^go/, "Go ")) + ". " : "")
+       + "Ce qui compte, c'est la version qui compile les binaires publiés.</p>";
   }
   return h + "</li>";
 }
@@ -1856,7 +1871,7 @@ function auditResult(job) {
       : "Aucun moteur installé. Installe semgrep et osv-scanner, puis relance.") + "</p>";
   }
   if (!n) {
-    return h + '<p class="rien">' + (eng.partial ? "Rien relevé, mais un moteur n'a rien vérifié." : "Rien relevé par les moteurs.") + "</p>";
+    return h + '<p class="rien">' + (eng.partial ? "Rien relevé, mais un moteur n'a pas tout vérifié." : "Rien relevé par les moteurs.") + "</p>";
   }
   h += auditFilters(items);
   var f = audit.filter;
@@ -1865,16 +1880,17 @@ function auditResult(job) {
   });
   // Le pre-tri et les decisions rangent sans rien cacher: tests, exemples et
   // code genere d'un cote, faux positifs de l'autre, chacun replie.
-  var main = [], tiers = [], essais = [], fp = [];
+  var main = [], tiers = [], essais = [], unused = [], fp = [];
   shown.forEach(function (it) {
     var ctx = it.kind === "code" ? evidenceOf(it.f, "contexte") : [];
     if (it.kind === "code" && triOf(it.f, job).etat === "faux_positif") fp.push(it);
+    else if (it.kind === "dep" && unusedDep(it)) unused.push(it);
     else if (ctx.indexOf("genere") >= 0) tiers.push(it);
     else if (ctx.indexOf("test") >= 0 || ctx.indexOf("exemple") >= 0) essais.push(it);
     else main.push(it);
   });
   var list = function (its) {
-    return '<ol class="liste">' + its.map(function (it) { return it.kind === "code" ? findingItem(it.f, job) : depItem(it); }).join("") + "</ol>";
+    return '<ol class="liste">' + its.map(function (it) { return it.kind === "code" ? findingItem(it.f, job) : depItem(it, ctx.go_compile); }).join("") + "</ol>";
   };
   // section garde son etat d'ouverture et dit, replie, combien de constats
   // graves elle contient: rien de grave ne passe inapercu.
@@ -1889,6 +1905,7 @@ function auditResult(job) {
   else if (!main.length) h += '<p class="rien">Rien en dehors des sections repliées.</p>';
   h += section("essais", essais, "tests et exemples", "hors du logiciel livré, à regarder en dernier");
   h += section("tiers", tiers, "code tiers ou généré", "livré, mais corrigé en amont ou par une nouvelle génération");
+  h += section("inutilisees", unused, "dépendances inutilisées", "requises par go.mod, importées par aucun paquet");
   h += section("faux", fp, "faux positifs", "écartés à la main, gardés pour les prochaines analyses");
   return h + '<p class="base">À vérifier à la main. Un constat non confirmé ne se signale pas.</p>';
 }
@@ -1898,7 +1915,7 @@ function auditResult(job) {
 // Tables sans prototype: une etiquette nommee « constructor » dans un rapport
 // importe reste une etiquette inconnue.
 var TRI_LABEL = table({ a_verifier: "à vérifier", confirme: "confirmé", signale: "signalé", faux_positif: "faux positif" });
-var CONTEXT_LABEL = table({ test: "test", exemple: "exemple", genere: "généré ou tiers", ci: "CI" });
+var CONTEXT_LABEL = table({ test: "test", exemple: "exemple", genere: "généré ou tiers", ci: "CI", inutilise: "inutilisée" });
 
 function table(o) {
   var t = Object.create(null), k;
@@ -2133,7 +2150,7 @@ function setView(view, note) {
   if (!view || !audit.view || view.id !== audit.view.id) {
     audit.drafts = {};
     audit.filter = { sev: "toutes", kind: "tout" };
-    audit.repli = { essais: false, tiers: false, faux: false };
+    audit.repli = { essais: false, tiers: false, inutilisees: false, faux: false };
   }
   audit.view = view;
   audit.viewNote = view ? note || "" : "";

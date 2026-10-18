@@ -48,6 +48,15 @@ type Scanner interface {
 	Scan(ctx context.Context, dir string) ([]finding.Finding, error)
 }
 
+// buildScanner est un moteur qui apprend aussi du depot Go: la version de Go
+// qui compile, les modules du go.mod que rien n'importe. *Govulncheck le
+// satisfait. Il gere lui-meme son delai: ce qu'il rend sans erreur apres
+// l'echeance est un resultat partiel qu'il a signale, pas un resultat tronque.
+type buildScanner interface {
+	Scanner
+	ScanBuild(ctx context.Context, dir string) ([]finding.Finding, *goFacts, error)
+}
+
 // DefaultTimeout borne la duree accordee a chaque moteur. Un moteur bloque ne
 // doit pas bloquer le scan entier: au-dela, il est interrompu et le rapport le
 // dit, plutot que de rendre la main sans fin.
@@ -73,6 +82,7 @@ func Run(ctx context.Context, dir, version string, scanners ...Scanner) (*findin
 type outcome struct {
 	available bool
 	findings  []finding.Finding
+	facts     *goFacts
 	err       error
 	elapsed   time.Duration
 }
@@ -128,6 +138,7 @@ func RunWith(ctx context.Context, dir, version string, opt Options, scanners ...
 	ran := []string{}
 	durations := map[string]float64{}
 	var found []finding.Finding
+	var facts *goFacts
 	for i, s := range scanners {
 		r := results[i]
 		if !r.available {
@@ -139,6 +150,9 @@ func RunWith(ctx context.Context, dir, version string, opt Options, scanners ...
 		if r.err != nil {
 			rep.Add(scanError(s.Name(), r.err))
 			continue
+		}
+		if facts == nil {
+			facts = r.facts
 		}
 		for _, f := range r.findings {
 			// Invariant de la couche: un scan n'emet jamais un constat deja
@@ -152,7 +166,14 @@ func RunWith(ctx context.Context, dir, version string, opt Options, scanners ...
 		}
 	}
 
+	// Les dependances inutilisees se reconnaissent avant la fusion, tant que
+	// chaque constat garde son manifeste et son module.
+	var unused map[string]bool
+	if facts != nil {
+		unused = unusedIDs(found, facts.unused)
+	}
 	kept := pretri(abs, uniqueIDs(mergeSameLine(dedupe(found))))
+	tagUnused(kept, unused)
 	for _, f := range kept {
 		rep.Add(f)
 	}
@@ -163,6 +184,11 @@ func RunWith(ctx context.Context, dir, version string, opt Options, scanners ...
 	// La duree de chaque moteur dit ou passe le temps d'un scan.
 	rep.Run.Context["durees_s"] = durations
 	rep.Run.Context["delai_moteur_s"] = timeout.Seconds()
+	// La version de Go qui a compile le depot pour govulncheck. osv-scanner, lui,
+	// lit celle du go.mod, souvent plus ancienne.
+	if facts != nil && facts.goVersion != "" {
+		rep.Run.Context["go_compile"] = facts.goVersion
+	}
 
 	rep.Finish()
 	return rep, nil
@@ -176,15 +202,28 @@ func runOne(ctx context.Context, s Scanner, dir string, timeout time.Duration) o
 	defer cancel()
 
 	start := time.Now()
-	fs, err := s.Scan(sctx, dir)
-	out := outcome{available: true, findings: fs, err: err, elapsed: time.Since(start)}
+	var (
+		fs       []finding.Finding
+		facts    *goFacts
+		err      error
+		selfTime bool
+	)
+	if b, ok := s.(buildScanner); ok {
+		fs, facts, err = b.ScanBuild(sctx, dir)
+		selfTime = err == nil
+	} else {
+		fs, err = s.Scan(sctx, dir)
+	}
+	out := outcome{available: true, findings: fs, facts: facts, err: err, elapsed: time.Since(start)}
 
 	switch ctxErr := sctx.Err(); {
+	case errors.Is(ctxErr, context.DeadlineExceeded) && selfTime:
+		// Le moteur a garde ce qui etait fini et dit ce qui manque.
 	case errors.Is(ctxErr, context.DeadlineExceeded):
-		out.findings = nil
+		out.findings, out.facts = nil, nil
 		out.err = fmt.Errorf("interrompu apres %s, delai maximal atteint", timeout)
 	case ctxErr != nil:
-		out.findings = nil
+		out.findings, out.facts = nil, nil
 		out.err = fmt.Errorf("interrompu: %w", ctxErr)
 	}
 	return out
@@ -235,6 +274,22 @@ func nothingToCheck(name, observed, remediation string) finding.Finding {
 		Status:      finding.StatusReview,
 		Observed:    observed,
 		Remediation: remediation,
+		Declared:    finding.Bool(false),
+	}
+}
+
+// partialScan est le constat laisse par un moteur qui n'a pas pu tout analyser:
+// govulncheck en echec pour un systeme, mais pas pour les autres. Ce qui a ete
+// analyse reste dans le rapport, et le rapport dit ce qui manque.
+func partialScan(name string, failed []string) finding.Finding {
+	return finding.Finding{
+		ID:          "QRO-SCAN-PARTIEL-" + name,
+		Title:       "Analyse partielle: " + name,
+		Category:    Category,
+		Severity:    finding.SeverityInfo,
+		Status:      finding.StatusReview,
+		Observed:    strings.Join(failed, " ; "),
+		Remediation: "Souvent un depot qui ne vise pas ce systeme. Sinon, la raison dit ce qui a bloque.",
 		Declared:    finding.Bool(false),
 	}
 }

@@ -152,7 +152,12 @@ func runScan(target, jsonPath string, timeout time.Duration) (int, error) {
 		fmt.Println(line)
 	}
 	if offProduct > 0 {
-		fmt.Printf("Pre-tri: %d constat(s) dans des tests, des exemples, ou du code tiers ou genere.\n", offProduct)
+		fmt.Printf("Pre-tri: %d constat(s) dans des tests, des exemples, du code tiers ou genere, ou des dependances inutilisees.\n", offProduct)
+	}
+	// osv-scanner lit la version de Go du go.mod, govulncheck compile avec celle
+	// de la machine: les deux ne disent pas la meme chose de stdlib.
+	if v, _ := rep.Run.Context["go_compile"].(string); v != "" {
+		fmt.Printf("govulncheck a compile avec %s, osv-scanner lit la version du go.mod.\n", v)
 	}
 	fmt.Println("Tous les constats sont a verifier manuellement avant toute declaration.")
 

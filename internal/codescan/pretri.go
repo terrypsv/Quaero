@@ -39,13 +39,17 @@ const (
 	// appel au symbole vulnerable d'une dependance.
 	ContextCalled    = "appele"
 	ContextNotCalled = "non_appele"
+	// ContextUnused: dependance Go requise par go.mod, mais qu'aucun paquet
+	// du depot n'importe, tests compris, quels que soient le systeme et les
+	// tags (voir build.go).
+	ContextUnused = "inutilise"
 )
 
 // OffProduct dit si une etiquette range le constat a part de la liste: un
-// test, un exemple, ou du code tiers ou genere, que le depot ne corrige pas
-// lui-meme.
+// test, un exemple, du code tiers ou genere, que le depot ne corrige pas
+// lui-meme, ou une dependance que rien n'importe.
 func OffProduct(tag string) bool {
-	return tag == ContextTest || tag == ContextExample || tag == ContextGenerated
+	return tag == ContextTest || tag == ContextExample || tag == ContextGenerated || tag == ContextUnused
 }
 
 // headBytes borne la lecture de l'en-tete d'un fichier pour y chercher la
