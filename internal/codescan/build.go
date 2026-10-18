@@ -229,7 +229,7 @@ func unusedIDs(found []finding.Finding, unused map[string]map[string]bool) map[s
 		return id
 	}
 	for _, f := range found {
-		ids := publicIDs(f)
+		ids := pkgIDs(f)
 		for _, id := range ids {
 			if _, ok := parent[id]; !ok {
 				parent[id] = id
@@ -241,7 +241,7 @@ func unusedIDs(found []finding.Finding, unused map[string]map[string]bool) map[s
 	}
 	blocked := map[string]bool{}
 	for _, f := range found {
-		ids := publicIDs(f)
+		ids := pkgIDs(f)
 		if len(ids) == 0 {
 			continue
 		}
@@ -258,6 +258,19 @@ func unusedIDs(found []finding.Finding, unused map[string]map[string]bool) map[s
 	return out
 }
 
+// pkgIDs rend les identifiants publics d'un constat, chacun rattache a son
+// paquet: une CVE qui touche x/net et stdlib fait deux noeuds, l'un peut etre
+// inutilise sans l'autre.
+func pkgIDs(f finding.Finding) []string {
+	pkg := depIdentity(f)
+	ids := publicIDs(f)
+	out := make([]string, len(ids))
+	for i, id := range ids {
+		out[i] = pkg + "|" + id
+	}
+	return out
+}
+
 // tagUnused etiquette, apres fusion, les dependances dont chaque identifiant
 // est dans ids.
 func tagUnused(kept []finding.Finding, ids map[string]bool) {
@@ -269,7 +282,7 @@ func tagUnused(kept []finding.Finding, ids map[string]bool) {
 		if f.Target == nil || f.Target.Type != "dependency" {
 			continue
 		}
-		pub := publicIDs(*f)
+		pub := pkgIDs(*f)
 		all := len(pub) > 0
 		for _, id := range pub {
 			all = all && ids[id]

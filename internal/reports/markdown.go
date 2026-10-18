@@ -7,8 +7,11 @@ import (
 	"fmt"
 	"math"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/terrypsv/Quaero/internal/advisory"
 	"github.com/terrypsv/Quaero/internal/finding"
@@ -200,10 +203,78 @@ func writeGroups(b *strings.Builder, fs []finding.Finding, decisions map[string]
 			writePlace(b, f, decisions[f.ID])
 		}
 		b.WriteString("\n")
+		// Comment corriger, puis quand c'est un faux positif et comment le
+		// dire dans le code. L'annotation peut changer d'un endroit a l'autre
+		// selon les moteurs qui l'ont releve.
 		if first.Remediation != "" {
-			b.WriteString(text(first.Remediation) + "\n\n")
+			b.WriteString("**Corriger.** " + text(first.Remediation) + "\n\n")
+		}
+		var exceptions []string
+		for _, f := range g {
+			for _, x := range evidence(f, "exception") {
+				if !contains(exceptions, x) {
+					exceptions = append(exceptions, x)
+				}
+			}
+		}
+		for _, x := range exceptions {
+			// Un endroit releve par un seul moteur a une annotation de moins:
+			// celle qui sert aux deux suffit pour le groupe.
+			if covered(x, exceptions) {
+				continue
+			}
+			b.WriteString("**Faux positif** " + quoted(lowerFirst(x)) + "\n\n")
 		}
 	}
+}
+
+// covered dit qu'une autre exception du groupe dit deja x, avec une
+// annotation de plus.
+func covered(x string, all []string) bool {
+	stem := strings.TrimSuffix(x, ".")
+	for _, y := range all {
+		if y != x && strings.HasPrefix(y, stem) {
+			return true
+		}
+	}
+	return false
+}
+
+// quoted ecrit un texte dont les annotations, entre « et », se lisent comme du
+// code, et le reste comme un paragraphe.
+func quoted(s string) string {
+	var parts []string
+	for {
+		before, rest, found := strings.Cut(s, "« ")
+		inside, after, closed := strings.Cut(rest, " »")
+		if !found || !closed {
+			break
+		}
+		parts = append(parts, text(before), code(inside))
+		s = after
+	}
+	parts = append(parts, text(s))
+	var out strings.Builder
+	for _, p := range parts {
+		if p == "" {
+			continue
+		}
+		if out.Len() > 0 && !strings.ContainsRune(".,;)", rune(p[0])) {
+			out.WriteByte(' ')
+		}
+		out.WriteString(p)
+	}
+	return out.String()
+}
+
+// lowerFirst met en minuscule la premiere lettre, pour une phrase qui suit une
+// etiquette.
+func lowerFirst(s string) string {
+	r, n := utf8.DecodeRuneInString(s)
+	if n == 0 {
+		return s
+	}
+	return string(unicode.ToLower(r)) + s[n:]
 }
 
 // writePlace ecrit un endroit signale: le fichier et la ligne, les moteurs,
@@ -233,9 +304,18 @@ func writePlace(b *strings.Builder, f finding.Finding, d triage.Decision) {
 	}
 	b.WriteString(item + "\n")
 	if snippet := evidence(f, "code"); len(snippet) > 0 {
-		for _, l := range strings.Split(strings.TrimRight(fence(snippet[0]), "\n"), "\n") {
-			b.WriteString("  " + l + "\n")
-		}
+		indent(b, fence(snippet[0]))
+	}
+	if fix := evidence(f, "correctif"); len(fix) > 0 {
+		b.WriteString("  Correction proposée par la règle,\n")
+		indent(b, fence(fix[0]))
+	}
+}
+
+// indent ecrit un bloc sous un element de liste.
+func indent(b *strings.Builder, block string) {
+	for _, l := range strings.Split(strings.TrimRight(block, "\n"), "\n") {
+		b.WriteString("  " + l + "\n")
 	}
 }
 
@@ -293,6 +373,7 @@ func writeDeps(b *strings.Builder, fs []finding.Finding, rep *finding.Report) {
 		case notCalled:
 			b.WriteString("govulncheck ne trouve aucun appel au code fautif. La mise à jour reste à faire, sans urgence.\n\n")
 		}
+		writeDepFix(b, g.name, g.list)
 		if g.name == "stdlib" {
 			s := "osv-scanner lit la version de Go écrite dans go.mod, pas celle qui compile."
 			if goVersion != "" {
@@ -301,6 +382,101 @@ func writeDeps(b *strings.Builder, fs []finding.Finding, rep *finding.Report) {
 			b.WriteString(s + "\n\n")
 		}
 	}
+}
+
+// writeDepFix dit comment corriger une dependance, comme la page: la version
+// qui corrige ses vulnerabilites et les commandes qui y passent. Deux copies
+// sur deux branches ont chacune leur version cible. Sans version calculee, le
+// conseil du rapport reste.
+func writeDepFix(b *strings.Builder, name string, list []finding.Finding) {
+	var targets, commands []string
+	var old string
+	unused, noFix := true, 0
+	for _, f := range list {
+		unused = unused && contexts(f)["inutilise"]
+		for _, v := range evidence(f, "version_cible") {
+			if !contains(targets, v) {
+				targets = append(targets, v)
+			}
+		}
+		for _, c := range evidence(f, "commande") {
+			if !contains(commands, c) {
+				commands = append(commands, c)
+			}
+		}
+		if len(evidence(f, "sans_correctif")) > 0 && len(evidence(f, "corrige_en")) == 0 {
+			noFix++
+		}
+		if old == "" {
+			old = f.Remediation
+		}
+	}
+	sort.SliceStable(targets, func(i, j int) bool { return byNumbers(targets[i], targets[j]) })
+	run := func() {
+		if len(commands) > 0 {
+			b.WriteString(fence(strings.Join(commands, "\n")))
+			b.WriteString("Quaero ne lance rien. À relire, puis à lancer à la racine du dépôt.\n\n")
+		}
+	}
+	if unused {
+		b.WriteString("**Corriger.** La retirer, aucun paquet ne l'importe.\n\n")
+		var tidy []string
+		for _, c := range commands {
+			if strings.HasSuffix(c, " mod tidy") {
+				tidy = append(tidy, c)
+			}
+		}
+		commands = tidy
+		run()
+		return
+	}
+	what := "toutes ses vulnérabilités"
+	if noFix > 0 {
+		what = "celles qui ont un correctif"
+	} else if len(list) == 1 {
+		what = "sa vulnérabilité"
+	}
+	codes := make([]string, len(targets))
+	for i, t := range targets {
+		codes[i] = code(t)
+	}
+	switch {
+	case name == "stdlib" && len(targets) > 0:
+		b.WriteString("**Corriger.** Compiler les binaires publiés avec Go " + text(targets[len(targets)-1]) + " ou plus récent.\n\n")
+	case len(targets) == 1:
+		b.WriteString("**Corriger.** Passer à " + codes[0] + " ou plus récent, la version qui corrige " + what + ".\n\n")
+	case len(targets) > 1:
+		b.WriteString("**Corriger.** Passer à " + strings.Join(codes, " ou ") + " selon la version en place, ou plus récent. Chacune corrige " + what + " sur sa branche.\n\n")
+	case len(commands) == 0 && noFix == 0 && old != "":
+		b.WriteString("**Corriger.** " + text(old) + "\n\n")
+	}
+	run()
+	if noFix > 0 {
+		b.WriteString(fmt.Sprintf("%s sans version corrigée publiée. Si le code fautif est appelé, isoler ou remplacer la dépendance.\n\n",
+			plural(noFix, "vulnérabilité", "vulnérabilités")))
+	}
+}
+
+// byNumbers range deux versions par leurs nombres, pour l'affichage.
+func byNumbers(a, b string) bool {
+	x, y := strings.Split(strings.TrimPrefix(a, "v"), "."), strings.Split(strings.TrimPrefix(b, "v"), ".")
+	num := func(parts []string, i int) int {
+		if i >= len(parts) {
+			return 0
+		}
+		end := 0
+		for end < len(parts[i]) && parts[i][end] >= '0' && parts[i][end] <= '9' {
+			end++
+		}
+		n, _ := strconv.Atoi(parts[i][:end])
+		return n
+	}
+	for i := 0; i < max(len(x), len(y)); i++ {
+		if p, q := num(x, i), num(y, i); p != q {
+			return p < q
+		}
+	}
+	return false
 }
 
 // summary compte comme la page: un element par constat de code, un par

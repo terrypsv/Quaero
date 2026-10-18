@@ -22,7 +22,8 @@ import (
 // TestGvcHelperProcess n'est pas un test: c'est un faux govulncheck. Il rend le
 // flux place dans QUAERO_GVC_<GOOS>, ce qui verifie au passage que chaque
 // systeme recoit bien son GOOS. Sans GOOS, c'est la machine. « !rien » imite
-// un systeme sans paquet a compiler, « !panne » un echec, « !dort » un moteur
+// un systeme sans paquet a compiler, « !contraintes » un module reserve a un
+// autre systeme, « !panne » un echec, « !dort » un moteur
 // qui depasse son delai.
 func TestGvcHelperProcess(t *testing.T) {
 	if os.Getenv("QUAERO_GVC_HELPER") != "1" {
@@ -41,6 +42,9 @@ func TestGvcHelperProcess(t *testing.T) {
 	case "!rien":
 		os.Stderr.WriteString("go: downloading example.com/x v1.0.0\ngovulncheck: no packages matched the provided patterns\n")
 		os.Exit(2)
+	case "!contraintes":
+		os.Stderr.WriteString("govulncheck: loading packages: There are errors with the provided package patterns:\n-: build constraints exclude all Go files in /x/internal/setup\n/x/app.go:11:2: could not import x/internal/setup (invalid package name: \"\")\n")
+		os.Exit(1)
 	case "!dort":
 		time.Sleep(time.Minute)
 	case "!panne", "":
@@ -315,14 +319,15 @@ func osvDep(module, version, manifest string, ids ...string) finding.Finding {
 }
 
 // Une dependance que rien n'importe se range a part, sans rien perdre. Une
-// vulnerabilite partagee avec stdlib, un autre go.mod ou un module importe ne
-// s'y range pas, meme fusionnee sous le nom du module inutilise.
+// vulnerabilite partagee avec stdlib ou un module d'un autre go.mod fait un
+// constat par paquet: celui du module inutilise se range a part, l'autre
+// reste.
 func TestDependanceInutilisee(t *testing.T) {
 	osv := fakeScanner{name: "osv-scanner", available: true, findings: []finding.Finding{
 		osvDep("golang.org/x/crypto", "0.33.0", "go.mod", "GO-A"),
 		osvDep("golang.org/x/crypto", "0.33.0", "go.mod", "GO-B", "CVE-B"),
 		osvDep("golang.org/x/sys", "0.30.0", "go.mod", "GO-C"),
-		// GO-D touche x/crypto et stdlib: dedupe les fusionne.
+		// GO-D touche x/crypto et stdlib: un constat chacun.
 		osvDep("golang.org/x/crypto", "0.33.0", "go.mod", "GO-D"),
 		osvDep("stdlib", "1.25", "go.mod", "GO-D"),
 		// GO-E: x/crypto ici, x/net dans un go.mod non interroge, relies par un
@@ -346,10 +351,11 @@ func TestDependanceInutilisee(t *testing.T) {
 	tagged := map[string]bool{}
 	for _, f := range rep.Findings {
 		if hasContext(f, ContextUnused) {
-			tagged[f.References[0].ID] = true
+			tagged[depModule(f)+" "+f.References[0].ID] = true
 		}
 	}
-	if want := map[string]bool{"GO-A": true, "GO-B": true, "GO-G": true}; !reflect.DeepEqual(tagged, want) {
+	if want := map[string]bool{"golang.org/x/crypto GO-A": true, "golang.org/x/crypto GO-B": true, "golang.org/x/crypto GO-D": true,
+		"golang.org/x/crypto GO-E": true, "golang.org/x/text GO-G": true}; !reflect.DeepEqual(tagged, want) {
 		t.Errorf("inutilisees: %v, attendu %v", tagged, want)
 	}
 	if got := rep.Run.Context["go_compile"]; got != "go1.27.2" {
@@ -539,5 +545,37 @@ func TestGosecDelaiGardeLesModulesFinis(t *testing.T) {
 	}
 	if !reflect.DeepEqual(where, []string{"a.go:3"}) || !partial {
 		t.Errorf("endroits %v, partiel %v: %+v", where, partial, rep.Findings)
+	}
+}
+
+// Un module reserve a un autre systeme se dit en clair, sans le long message
+// de Go sur un nom de paquet invalide. Sur la machine, le message de Go reste:
+// la meme erreur y vient d'un paquet cgo compile sans cgo.
+func TestGovulncheckContraintesDeBuild(t *testing.T) {
+	cross, label := "darwin", "macOS"
+	if runtime.GOOS == "darwin" {
+		cross, label = "linux", "Linux"
+	}
+	streams := map[string]string{"linux": sbomStream + gvcOSVEntry + gvcModuleOnly, "darwin": sbomStream + gvcOSVEntry + gvcModuleOnly, "windows": sbomStream + gvcOSVEntry + gvcModuleOnly}
+	streams[cross] = "!contraintes"
+	fs, _, err := fakeGovulncheck(t, streams).ScanBuild(context.Background(), t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(fs) != 2 || fs[1].ID != "QRO-SCAN-PARTIEL-govulncheck" {
+		t.Fatalf("constats %+v", fs)
+	}
+	if obs := fs[1].Observed; obs != label+": "+excludedBuildText {
+		t.Errorf("observation %q", obs)
+	}
+
+	streams[cross] = sbomStream + gvcOSVEntry + gvcModuleOnly
+	streams[runtime.GOOS] = "!contraintes"
+	fs, _, err = fakeGovulncheck(t, streams).ScanBuild(context.Background(), t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(fs) != 2 || !strings.Contains(fs[1].Observed, "build constraints exclude all Go files") || strings.Contains(fs[1].Observed, "Normal pour") {
+		t.Errorf("machine: %+v", fs)
 	}
 }

@@ -95,3 +95,58 @@ func TestExportMarkdown(t *testing.T) {
 		t.Errorf("nom %q", name)
 	}
 }
+
+// L'export dit comment corriger, comme la page: le remede et le faux positif
+// pour le code, la version et les commandes pour une dependance.
+func TestExportCommentCorriger(t *testing.T) {
+	rep := finding.NewReport(finding.Tool{Name: "quaero", Version: "1.2.3"}, "h", map[string]any{"cible": "/x/depot"})
+	ev := func(kv ...string) []finding.Evidence {
+		var out []finding.Evidence
+		for i := 0; i+1 < len(kv); i += 2 {
+			out = append(out, finding.Evidence{Type: kv[i], Data: kv[i+1]})
+		}
+		return out
+	}
+	dep := func(id, module string, kv ...string) finding.Finding {
+		return finding.Finding{ID: id, Title: "faille " + id, Severity: finding.SeverityMedium, Status: finding.StatusReview,
+			Target: &finding.Target{Type: "dependency", Identifier: module}, References: []finding.Reference{{Framework: "OSV", ID: id}},
+			Remediation: "Mettre a jour.", Evidence: ev(kv...)}
+	}
+	rep.Add(finding.Finding{ID: "C", Title: "G204: Subprocess launched with variable", Severity: finding.SeverityMedium, Status: finding.StatusReview,
+		Target: &finding.Target{Type: "code", Identifier: "util.go:27"}, Remediation: "Lancer un binaire fixe.",
+		Evidence: ev("exception", "Si le binaire vient du programme. Le dire dans le code avec « // #nosec G204 -- raison » en fin de ligne.",
+			"correctif", "exec.Command(\"git\", url)")})
+	rep.Add(finding.Finding{ID: "C2", Title: "G204: Subprocess launched with variable", Severity: finding.SeverityMedium, Status: finding.StatusReview,
+		Target: &finding.Target{Type: "code", Identifier: "util.go:40"}, Remediation: "Lancer un binaire fixe.",
+		Evidence: ev("exception", "Si le binaire vient du programme. Le dire dans le code avec « // #nosec G204 -- raison » en fin de ligne, et « // nosemgrep: r.x » sur la ligne d'avant.")})
+	rep.Add(dep("GO-1", "golang.org/x/net@0.35.0", "corrige_en", "0.36.0", "version_cible", "0.38.0",
+		"commande", "go -C cmd/x get golang.org/x/net@v0.38.0", "commande", "go -C cmd/x mod tidy"))
+	rep.Add(dep("GO-2", "golang.org/x/net@0.35.0", "sans_correctif", "oui", "version_cible", "0.38.0",
+		"commande", "go -C cmd/x get golang.org/x/net@v0.38.0", "commande", "go -C cmd/x mod tidy"))
+	rep.Add(dep("GO-3", "stdlib@1.25", "corrige_en", "1.25.4", "version_cible", "1.25.4"))
+	rep.Add(dep("GO-4", "golang.org/x/sys@0.30.0", "contexte", "inutilise", "commande", "go mod tidy"))
+	rep.Add(dep("GO-5", "golang.org/x/text@0.20.0"))
+	rep.Add(dep("GHSA-c2qf", "semver@5.7.1", "corrige_en", "5.7.2", "version_cible", "5.7.2", "commande", "npm update semver"))
+	rep.Add(dep("GHSA-c2qf-2", "semver@6.3.0", "corrige_en", "6.3.1", "version_cible", "6.3.1", "commande", "npm update semver"))
+	rep.Finish()
+	md := Markdown(rep, nil, time.Now())
+	for _, want := range []string{
+		"**Corriger.** Lancer un binaire fixe.",
+		"**Faux positif** si le binaire vient du programme. Le dire dans le code avec `// #nosec G204 -- raison` en fin de ligne, et `// nosemgrep: r.x` sur la ligne d'avant.\n\n",
+		"  Correction proposée par la règle,\n  ```\n  exec.Command(\"git\", url)\n  ```",
+		"**Corriger.** Passer à `0.38.0` ou plus récent, la version qui corrige celles qui ont un correctif.",
+		"```\ngo -C cmd/x get golang.org/x/net@v0.38.0\ngo -C cmd/x mod tidy\n```",
+		"1 vulnérabilité sans version corrigée publiée.",
+		"**Corriger.** Compiler les binaires publiés avec Go 1.25.4 ou plus récent.",
+		"**Corriger.** La retirer, aucun paquet ne l'importe.\n\n```\ngo mod tidy\n```",
+		"**Corriger.** Mettre a jour.",
+		"**Corriger.** Passer à `5.7.2` ou `6.3.1` selon la version en place, ou plus récent. Chacune corrige toutes ses vulnérabilités sur sa branche.\n\n```\nnpm update semver\n```",
+	} {
+		if !strings.Contains(md, want) {
+			t.Errorf("%q absent:\n%s", want, md)
+		}
+	}
+	if n := strings.Count(md, "**Faux positif**"); n != 1 {
+		t.Errorf("%d faux positifs pour un groupe:\n%s", n, md)
+	}
+}

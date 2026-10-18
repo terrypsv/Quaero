@@ -119,9 +119,25 @@ func Draft(rep *finding.Report, f finding.Finding) string {
 
 	b.WriteString("## Remediation\n\n")
 	if dependency {
-		b.WriteString("Upgrade the dependency to a version that fixes the vulnerability listed below, or replace it.\n\n")
+		if v := evidence(f, "version_cible"); len(v) > 0 {
+			// La version vient du rapport, qui peut etre importe: elle ne doit
+			// ni fermer le code en ligne ni ouvrir un lien.
+			codes := make([]string, len(v))
+			for i, x := range v {
+				codes[i] = inlineCode(x)
+			}
+			fmt.Fprintf(&b, "Upgrade the dependency to %s or later, which fixes the vulnerability listed below.\n\n", strings.Join(codes, " or "))
+			if cmds := evidence(f, "commande"); len(cmds) > 0 {
+				b.WriteString("For example, from the repository root:\n\n" + fenced(strings.Join(cmds, "\n")))
+			}
+		} else {
+			b.WriteString("Upgrade the dependency to a version that fixes the vulnerability listed below, or replace it.\n\n")
+		}
 	} else {
 		b.WriteString("TO COMPLETE: the suggested fix. The rule description above usually states the expected safe pattern.\n\n")
+		if fix := evidence(f, "correctif"); len(fix) > 0 {
+			b.WriteString("The rule proposes this replacement for the reported line:\n\n" + fenced(fix[0]))
+		}
 	}
 
 	if refs := references(f); len(refs) > 0 {
@@ -137,6 +153,27 @@ func Draft(rep *finding.Report, f finding.Finding) string {
 	fmt.Fprintf(&b, "<!-- Brouillon prepare par %s %s a partir du constat %s, run %s. -->\n",
 		rep.Tool.Name, rep.Tool.Version, f.ID, rep.Run.ID)
 	return b.String()
+}
+
+// inlineCode met un champ sur une ligne dans un code en ligne qu'il ne peut
+// pas fermer.
+func inlineCode(s string) string {
+	return "`" + strings.ReplaceAll(strings.Join(strings.Fields(s), " "), "`", "'") + "`"
+}
+
+// fenced met du code dans un bloc que son contenu ne peut pas fermer.
+func fenced(code string) string {
+	longest, run := 0, 0
+	for _, r := range code {
+		if r == '`' {
+			run++
+			longest = max(longest, run)
+		} else {
+			run = 0
+		}
+	}
+	f := strings.Repeat("`", max(3, longest+1))
+	return f + "\n" + strings.TrimRight(code, "\n") + "\n" + f + "\n\n"
 }
 
 // writeChecklist ecrit, en commentaire HTML, ce que l'operateur doit faire

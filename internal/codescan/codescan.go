@@ -180,8 +180,14 @@ func RunWith(ctx context.Context, dir, version string, opt Options, scanners ...
 	if facts != nil {
 		unused = unusedIDs(found, facts.unused)
 	}
+	// La version cible et la commande de chaque dependance se calculent aussi
+	// avant la fusion, quand chaque constat ne parle que d'un paquet.
+	fixCommands(found)
 	kept := pretri(abs, uniqueIDs(mergeSameLine(dedupe(found))))
 	tagUnused(kept, unused)
+	unusedFixes(kept)
+	// Comment corriger le code: le guide, regle par regle.
+	remedies(kept)
 	for _, f := range kept {
 		rep.Add(f)
 	}

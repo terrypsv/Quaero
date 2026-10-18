@@ -102,6 +102,9 @@ type semgrepPos struct {
 }
 
 type semgrepExtra struct {
+	// Fix est la correction que la regle propose pour la ligne, quand elle en
+	// a une.
+	Fix      string          `json:"fix"`
 	Message  string          `json:"message"`
 	Severity string          `json:"severity"`
 	Lines    string          `json:"lines"`
@@ -164,6 +167,9 @@ func projectSemgrep(r semgrepResult) finding.Finding {
 		out.Evidence = append(out.Evidence, finding.Evidence{Type: "code", Data: code})
 	}
 	out.Evidence = append(out.Evidence, finding.Evidence{Type: "location", Data: loc})
+	if fix := strings.TrimSpace(r.Extra.Fix); fix != "" {
+		out.Evidence = append(out.Evidence, finding.Evidence{Type: EvidenceSuggestedFix, Data: fix})
+	}
 	// L'identifiant complet de la regle est celui qu'attend une annotation
 	// nosemgrep: le titre n'en garde que la fin, lisible mais insuffisant.
 	if r.CheckID != "" {

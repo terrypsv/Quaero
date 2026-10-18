@@ -150,7 +150,7 @@ func absorb(a, b finding.Finding) finding.Finding {
 		}
 		a.Description += d
 	}
-	a.Evidence = mergeEngines(a.Evidence, b.Evidence)
+	a.Evidence = mergeEngines(a.Evidence, b.Evidence, false)
 	engines := make([]string, 0, 2)
 	for _, e := range b.Evidence {
 		if e.Type == EvidenceEngine {
@@ -180,7 +180,8 @@ func absorb(a, b finding.Finding) finding.Finding {
 			urls[e.Data] = true
 			continue
 		}
-		if (e.Type == "code" && !hasCode) || e.Type == "rule" {
+		// La regle et la correction qu'elle propose valent pour la meme ligne.
+		if (e.Type == "code" && !hasCode) || e.Type == "rule" || e.Type == EvidenceSuggestedFix {
 			a.Evidence = append(a.Evidence, e)
 			if e.Type == "code" {
 				hasCode = true
@@ -203,7 +204,9 @@ func absorb(a, b finding.Finding) finding.Finding {
 // dedupe regroupe les constats qui decrivent la meme vulnerabilite connue,
 // reconnue a un identifiant public partage (OSV, CVE ou GHSA). Deux moteurs qui
 // tombent d'accord ne font pas deux failles: on garde le constat le plus
-// informatif, et l'autre moteur s'ajoute a sa provenance.
+// informatif, et l'autre moteur s'ajoute a sa provenance. Pour une
+// dependance, il faut aussi le meme paquet: une CVE qui touche x/net et
+// stdlib fait deux mises a jour.
 //
 // Les constats sans identifiant public (motifs de code, constats d'absence) ne
 // sont jamais fusionnes. Partager une CWE ne suffit pas: deux injections au
@@ -213,10 +216,14 @@ func dedupe(fs []finding.Finding) []finding.Finding {
 	index := map[string]int{} // identifiant public -> position dans kept
 
 	for _, f := range fs {
+		// Une meme CVE touche souvent plusieurs paquets (x/net et stdlib, un
+		// paquet Maven): chacun garde son constat, sa version et sa commande.
+		// Seuls les constats du meme paquet se fusionnent.
+		pkg := depIdentity(f)
 		ids := publicIDs(f)
 		pos := -1
 		for _, id := range ids {
-			if p, ok := index[id]; ok {
+			if p, ok := index[pkg+"|"+id]; ok {
 				pos = p
 				break
 			}
@@ -225,20 +232,20 @@ func dedupe(fs []finding.Finding) []finding.Finding {
 		if pos < 0 {
 			kept = append(kept, f)
 			pos = len(kept) - 1
-		} else if better(f, kept[pos]) {
-			f.Evidence = mergeEngines(f.Evidence, kept[pos].Evidence)
+		} else if same := sameDependency(f, kept[pos]); better(f, kept[pos]) {
+			f.Evidence = mergeEngines(f.Evidence, kept[pos].Evidence, same)
 			kept[pos] = f
 		} else {
-			kept[pos].Evidence = mergeEngines(kept[pos].Evidence, f.Evidence)
+			kept[pos].Evidence = mergeEngines(kept[pos].Evidence, f.Evidence, same)
 		}
 
 		// Tous les identifiants des deux constats pointent vers le survivant,
 		// pour qu'un troisieme moteur reconnu par un seul alias le rejoigne.
 		for _, id := range ids {
-			index[id] = pos
+			index[pkg+"|"+id] = pos
 		}
 		for _, id := range publicIDs(kept[pos]) {
-			index[id] = pos
+			index[pkg+"|"+id] = pos
 		}
 	}
 	return kept
@@ -295,10 +302,21 @@ func engineRank(f finding.Finding) int {
 
 // mergeEngines ajoute a dst les preuves de moteur et les etiquettes de pre-tri
 // de src qu'il n'a pas deja.
-func mergeEngines(dst, src []finding.Evidence) []finding.Evidence {
+func mergeEngines(dst, src []finding.Evidence, sameDep bool) []finding.Evidence {
 	// Les moteurs et les etiquettes de pre-tri passent au survivant: l'avis de
-	// govulncheck sur l'appel du code fautif ne doit pas se perdre.
-	keep := func(e finding.Evidence) bool { return e.Type == EvidenceEngine || e.Type == EvidenceContext }
+	// govulncheck sur l'appel du code fautif ne doit pas se perdre. Le
+	// manifeste, les versions et les commandes aussi, mais seulement entre
+	// constats du meme paquet (sameDep): une meme CVE touche souvent plusieurs
+	// paquets, et la commande de l'un ne corrige pas l'autre.
+	keep := func(e finding.Evidence) bool {
+		switch {
+		case e.Type == EvidenceEngine, e.Type == EvidenceContext:
+			return true
+		case fixTypes[e.Type]:
+			return sameDep
+		}
+		return false
+	}
 	have := map[finding.Evidence]bool{}
 	for _, e := range dst {
 		if keep(e) {

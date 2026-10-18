@@ -8,6 +8,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
+	"strings"
 
 	"github.com/terrypsv/Quaero/internal/finding"
 )
@@ -101,6 +103,92 @@ type osvVuln struct {
 	Details    string         `json:"details"`
 	Aliases    []string       `json:"aliases"`
 	References []osvReference `json:"references"`
+	Affected   []osvAffected  `json:"affected"`
+}
+
+// osvAffected dit quelles versions d'un paquet une vulnerabilite touche, et a
+// partir de laquelle elle est corrigee.
+type osvAffected struct {
+	Package osvPkgInfo `json:"package"`
+	Ranges  []struct {
+		Type   string `json:"type"`
+		Events []struct {
+			Introduced   string `json:"introduced"`
+			Fixed        string `json:"fixed"`
+			LastAffected string `json:"last_affected"`
+		} `json:"events"`
+	} `json:"ranges"`
+}
+
+// span est un intervalle de versions touchees: de introduced, compris, a
+// fixed, exclu, ou a last, compris. Sans l'un ni l'autre, il reste ouvert.
+type span struct{ introduced, fixed, last string }
+
+func (s span) holds(v string, cmp func(a, b string) int) bool {
+	if s.introduced != "" && s.introduced != "0" && cmp(v, s.introduced) < 0 {
+		return false
+	}
+	switch {
+	case s.fixed != "":
+		return cmp(v, s.fixed) < 0
+	case s.last != "":
+		return cmp(v, s.last) <= 0
+	}
+	return true
+}
+
+// fixedFor rend la premiere version corrigee de pkg qui depasse sa version
+// courante et n'est elle-meme dans aucun intervalle touche, comme
+// govulncheck, ou "". known dit que la base decrit ce paquet: sans cela,
+// l'absence de version corrigee ne veut rien dire. Les intervalles GIT
+// portent des commits, pas des versions: ils ne comptent pas.
+func (v osvVuln) fixedFor(pkg osvPkgInfo) (fixed string, known bool) {
+	var spans []span
+	var fixes []string
+	for _, a := range v.Affected {
+		if normName(pkg.Ecosystem, a.Package.Name) != normName(pkg.Ecosystem, pkg.Name) ||
+			(a.Package.Ecosystem != "" && pkg.Ecosystem != "" && !strings.EqualFold(a.Package.Ecosystem, pkg.Ecosystem)) {
+			continue
+		}
+		for _, r := range a.Ranges {
+			if strings.EqualFold(r.Type, "GIT") {
+				continue
+			}
+			known = true
+			open := -1 // l'intervalle que le prochain evenement referme
+			for _, e := range r.Events {
+				switch {
+				case e.Introduced != "":
+					spans = append(spans, span{introduced: e.Introduced})
+					open = len(spans) - 1
+				case e.Fixed != "":
+					fixes = append(fixes, e.Fixed)
+					if open >= 0 {
+						spans[open].fixed, open = e.Fixed, -1
+					}
+				case e.LastAffected != "":
+					if open >= 0 {
+						spans[open].last, open = e.LastAffected, -1
+					}
+				}
+			}
+		}
+	}
+	cmp := versionCmp(pkg.Ecosystem)
+	sort.Slice(fixes, func(i, j int) bool { return cmp(fixes[i], fixes[j]) < 0 })
+	for _, f := range fixes {
+		if pkg.Version != "" && cmp(f, pkg.Version) <= 0 {
+			continue
+		}
+		touched := false
+		for _, s := range spans {
+			touched = touched || s.holds(f, cmp)
+		}
+		if !touched {
+			return f, known
+		}
+	}
+	return "", known
 }
 
 type osvReference struct {
@@ -159,6 +247,19 @@ func projectOSV(src osvSource, pkg osvPkgInfo, v osvVuln) finding.Finding {
 	}
 	if src.Path != "" {
 		out.Evidence = append(out.Evidence, finding.Evidence{Type: "manifest", Data: src.Path})
+	}
+	if pkg.Ecosystem != "" {
+		out.Evidence = append(out.Evidence, finding.Evidence{Type: EvidenceEcosystem, Data: pkg.Ecosystem})
+	}
+	// Sans description du paquet dans la base, la version corrigee reste
+	// inconnue: le conseil general reste.
+	switch fixed, known := v.fixedFor(pkg); {
+	case fixed != "":
+		out.Evidence = append(out.Evidence, finding.Evidence{Type: EvidenceFixedIn, Data: strings.TrimPrefix(fixed, "v")})
+		out.Remediation = "Mettre a jour vers " + strings.TrimPrefix(fixed, "v") + " ou plus recent."
+	case known:
+		out.Evidence = append(out.Evidence, finding.Evidence{Type: EvidenceNoFix, Data: "oui"})
+		out.Remediation = "Aucune version corrigee publiee: isoler ou remplacer la dependance."
 	}
 	for _, ref := range v.References {
 		out.Evidence = append(out.Evidence, finding.Evidence{Type: "url", Data: ref.URL})
