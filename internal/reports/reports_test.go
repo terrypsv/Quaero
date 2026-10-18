@@ -59,7 +59,9 @@ func TestEnregistrerRelireEffacer(t *testing.T) {
 // Seuls les noms tires par Quaero touchent au disque.
 func TestNomsRefuses(t *testing.T) {
 	s := &Store{Dir: t.TempDir()}
-	for _, id := range []string{"", "../config", "..", "a/b", `a\b`, "20261012-153200-abcdef01234", "20261012-153200-abcdef012345.json", "x"} {
+	for _, id := range []string{"", "../config", "..", "a/b", `a\b`, "20261012-153200-abcdef01234", "20261012-153200-abcdef012345.json", "x",
+		"Argus_2026-10-18_18-26-57_abcdef", "argus_2026-10-18_18-26-57_abcde", "-argus_2026-10-18_18-26-57_abcdef",
+		"../argus_2026-10-18_18-26-57_abcdef", "argus_2026-10-18_18h26_abcdef", "argus-_2026-10-18_18-26-57_abcdef"} {
 		if ValidID(id) {
 			t.Errorf("%q accepte", id)
 		}
@@ -231,5 +233,55 @@ func TestSuppressionAbsente(t *testing.T) {
 	s := &Store{Dir: t.TempDir()}
 	if err := s.Delete("20261012-153200-abcdef012345"); !errors.Is(err, ErrNotFound) {
 		t.Errorf("Delete d'un absent: %v", err)
+	}
+}
+
+// Le nom dit la cible et la date, et le fichier se lit dans un editeur.
+func TestNomLisible(t *testing.T) {
+	s := &Store{Dir: t.TempDir()}
+	e, err := s.Save(sample(`C:\Users\Terry PASSAVE\Desktop\Argus`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ValidID(e.ID) || !strings.HasPrefix(e.ID, "argus_"+time.Now().Format("2006-01-02")) {
+		t.Errorf("nom %q", e.ID)
+	}
+	data, err := os.ReadFile(filepath.Join(s.Dir, e.ID+".json"))
+	if err != nil || !strings.Contains(string(data), "\n  \"run\": {") {
+		t.Errorf("rapport non indente: %v %.80s", err, data)
+	}
+	for target, want := range map[string]string{
+		"github.com/Owner/Repo.go":     "owner-repo-go",
+		"/home/moi/Projet Été/":        "projet-ete",
+		`C:\Users\Terry PASSAVE\Argus`: "argus",
+		"":                             "rapport",
+		"../..":                        "rapport",
+		strings.Repeat("a", 60):        strings.Repeat("a", 40),
+		"x---y":                        "x-y",
+	} {
+		if got := Slug(target); got != want {
+			t.Errorf("Slug(%q) = %q, attendu %q", target, got, want)
+		}
+	}
+}
+
+// Les rapports ranges sous l'ancien nom restent dans la liste.
+func TestAncienNomRelu(t *testing.T) {
+	s := &Store{Dir: t.TempDir()}
+	data, _ := json.Marshal(sample("ancien"))
+	const old = "20261012-153200-abcdef012345"
+	if err := os.WriteFile(filepath.Join(s.Dir, old+".json"), data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	recent, err := s.Save(sample("recent"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	list, err := s.List()
+	if err != nil || len(list) != 2 || list[0].ID != recent.ID || list[1].ID != old {
+		t.Fatalf("liste %+v %v", list, err)
+	}
+	if err := s.Delete(old); err != nil {
+		t.Errorf("ancien nom non efface: %v", err)
 	}
 }
