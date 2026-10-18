@@ -718,6 +718,12 @@ même constat donne toujours le même conseil, et rien ne quitte la machine.
   version de Go au moins égale à celle indiquée.
 - Une dépendance inutilisée se retire avec `go mod tidy` dans son module.
 
+Une règle que le guide ne connaît pas renvoie à sa description, dans
+« détails », et garde l'annotation de faux positif. Un rapport enregistré
+avant le guide le reçoit en se rouvrant, le fichier reste tel quel. Ses
+dépendances gardent leur conseil, la version corrigée demande la base OSV du
+jour de l'analyse.
+
 L'export `.md` reprend la même chose. Le brouillon de signalement, en
 anglais, donne la version et les commandes pour une dépendance, et la
 correction proposée par la règle pour le code.

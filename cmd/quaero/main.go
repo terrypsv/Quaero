@@ -117,7 +117,8 @@ func main() {
 	// ecoute sur toutes les interfaces, elles ne sont ni gardees ni servies,
 	// comme les dossiers locaux: elles peuvent citer du code prive.
 	if dir, err := reports.DefaultDir(); err == nil && !webui.ListensEverywhere(*addr) {
-		server.Reports = &reports.Store{Dir: dir}
+		// Un rapport d'avant le guide de correction le recoit en se rouvrant.
+		server.Reports = &reports.Store{Dir: dir, Enrich: codescan.Remedies}
 		server.OpenDir = openFolder
 	}
 	// Les decisions de tri suivent la meme regle: elles citent des fichiers et

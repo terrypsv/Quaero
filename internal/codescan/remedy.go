@@ -21,6 +21,17 @@ import (
 // positif et l'annotation qui le dit dans le code.
 const EvidenceException = "exception"
 
+// genericRemediation est le conseil que gosec et semgrep recoivent avant le
+// guide. Un rapport enregistre avant le guide le porte encore.
+const genericRemediation = "Revoir le motif signale et corriger ou justifier l'exception."
+
+// unknownRule est le remede d'une regle que le guide ne connait pas: la
+// description de la regle dit le motif attendu.
+var unknownRule = remedy{
+	"Pas de remède écrit pour cette règle. Sa description, dans « détails », dit le motif sûr attendu.",
+	"Si le motif est voulu.",
+}
+
 // EvidenceSuggestedFix porte la correction que la regle semgrep propose
 // elle-meme, a appliquer a la ligne signalee.
 const EvidenceSuggestedFix = "correctif"
@@ -285,20 +296,37 @@ func fileOf(f finding.Finding) (ext, base string) {
 // hashComment sont les extensions dont les commentaires commencent par #.
 var hashComment = set(".py", ".rb", ".sh", ".bash", ".zsh", ".yml", ".yaml", ".toml", ".tf", ".hcl", ".pl", ".r", ".ps1", ".dockerfile", ".cfg", ".ini", ".conf")
 
-// remedies pose sur chaque constat de code le remede du guide, quand il en a
-// un, a la place du conseil general.
+// remedies pose sur chaque constat de code le remede du guide a la place du
+// conseil general. Une regle que le guide ne connait pas renvoie a sa
+// description, et garde l'annotation qui la tait. Un constat qui a deja son
+// remede n'est pas touche: l'appel peut se repeter.
 func remedies(fs []finding.Finding) {
 	for i := range fs {
 		f := &fs[i]
-		if published(*f) || isMeta(*f) {
+		if published(*f) || isMeta(*f) || len(evidenceValues(*f, EvidenceException)) > 0 {
+			continue
+		}
+		if f.Remediation != "" && f.Remediation != genericRemediation {
 			continue
 		}
 		r, notes, ok := remedyOf(*f)
 		if !ok {
-			continue
+			r = unknownRule
 		}
 		f.Remediation = r.fix
-		f.Evidence = append(f.Evidence, finding.Evidence{Type: EvidenceException,
-			Data: r.ok + " Le dire dans le code avec " + strings.Join(notes, ", et ") + "."})
+		if len(notes) > 0 {
+			f.Evidence = append(f.Evidence, finding.Evidence{Type: EvidenceException,
+				Data: r.ok + " Le dire dans le code avec " + strings.Join(notes, ", et ") + "."})
+		}
+	}
+}
+
+// Remedies pose le guide sur un rapport enregistre avant lui: rouvert, il dit
+// comment corriger comme une analyse du jour. Les dependances gardent le
+// conseil qu'elles portent, leur version corrigee demande la base OSV du jour
+// de l'analyse.
+func Remedies(rep *finding.Report) {
+	if rep != nil {
+		remedies(rep.Findings)
 	}
 }

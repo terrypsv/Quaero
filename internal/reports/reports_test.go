@@ -285,3 +285,24 @@ func TestAncienNomRelu(t *testing.T) {
 		t.Errorf("ancien nom non efface: %v", err)
 	}
 }
+
+// Un rapport relu passe par Enrich, qui le complete sans toucher au fichier.
+func TestRelectureCompletee(t *testing.T) {
+	calls := 0
+	s := &Store{Dir: t.TempDir(), Enrich: func(rep *finding.Report) {
+		calls++
+		rep.Findings[0].Remediation = "complete"
+	}}
+	e, err := s.Save(sample("github.com/a/b"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	rep, err := s.Load(e.ID)
+	if err != nil || calls != 1 || rep.Findings[0].Remediation != "complete" {
+		t.Fatalf("relecture: %v, %d appels", err, calls)
+	}
+	data, err := os.ReadFile(filepath.Join(s.Dir, e.ID+".json"))
+	if err != nil || strings.Contains(string(data), "complete") {
+		t.Errorf("fichier modifie: %v", err)
+	}
+}
