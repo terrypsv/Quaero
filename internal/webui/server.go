@@ -11,7 +11,9 @@ package webui
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"embed"
+	"encoding/hex"
 	"encoding/json"
 	"math"
 	"net/http"
@@ -35,6 +37,14 @@ import (
 
 //go:embed index.html
 var indexHTML []byte
+
+// pageID identifie la page embarquee. Un onglet reste ouvert pendant que
+// Quaero est relance: s'il trouve un autre identifiant, c'est une autre
+// version, et il se recharge plutot que de garder l'ancienne interface.
+var pageID = func() string {
+	sum := sha256.Sum256(indexHTML)
+	return hex.EncodeToString(sum[:6])
+}()
 
 // fontFiles porte les polices de l'interface, produites par scripts/polices.py
 // et livrees avec leur licence. Elles sont dans le binaire parce que la
@@ -97,6 +107,9 @@ type Server struct {
 	// reports.go). Nil, la page ne propose ni de les enregistrer ni de les
 	// rouvrir.
 	Reports *reports.Store
+	// OpenDir ouvre un dossier dans l'explorateur de fichiers du systeme. Nil,
+	// la page ne propose pas d'ouvrir le dossier des rapports.
+	OpenDir func(dir string) error
 	// Triage garde les decisions de tri sur les constats (triage.go). Nil,
 	// la page ne propose pas de trier.
 	Triage *triage.Store
@@ -141,6 +154,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/api/reports/view", s.handleReportView)
 	mux.HandleFunc("/api/reports/import", s.handleReportImport)
 	mux.HandleFunc("/api/reports/delete", s.handleReportDelete)
+	mux.HandleFunc("/api/reports/open", s.handleReportsOpen)
 	mux.HandleFunc("/api/presence", s.handlePresence)
 	mux.HandleFunc("/api/triage", s.handleTriage)
 	mux.HandleFunc("/fonts/", s.handleFont)
@@ -184,7 +198,7 @@ func (s *Server) handleFont(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleVersion(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]string{"version": s.Version})
+	writeJSON(w, http.StatusOK, map[string]string{"version": s.Version, "page": pageID})
 }
 
 // handleQuota reports the search budget. It asks GitHub when the client can

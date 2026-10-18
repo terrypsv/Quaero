@@ -189,6 +189,12 @@
   .ligne > span { font-size: 13px; color: var(--gris); }
   .preciser .base { margin: 0; font-size: 12px; color: var(--pale); }
   .preciser .choix { min-height: 30px; padding: 0 10px; font-size: 13px; }
+  .preciser details > summary { cursor: pointer; font-size: 14px; font-weight: 700; }
+  .preciser details[open] > summary { margin-bottom: 12px; }
+  .preciser details > div { display: flex; flex-direction: column; gap: 12px; }
+  /* Une fois la liste affichee, l'explication et les exemples cedent la place:
+     les premiers depots tiennent sur un ecran de portable. */
+  #vue-recherche.a-resultats > .intro, #vue-recherche.a-resultats #suggest { display: none; }
   .filtres { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin-top: 12px; font-size: 13px; color: var(--gris); }
   .filtres .portee { flex-basis: 100%; font-size: 12px; color: var(--pale); }
 
@@ -303,7 +309,14 @@
   .rapports-liste .ligne code { text-decoration: underline; text-underline-offset: 4px; }
   .rapports-liste li:hover { background: var(--blanc); }
   .rapports-liste li.on:hover { background: var(--acide); }
-  .rapport-actions { margin-top: 12px; }
+  .rapport-actions { margin-left: auto; }
+  /* Un constat tient en trois lignes: titre, lieu et gestes, details. Les
+     gestes sont petits, ils reviennent sur chaque constat. */
+  .constat.depot { padding: 12px 0 10px 14px; gap: 4px; }
+  .constat .l2 { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 16px; }
+  .actions.compactes { gap: 6px; }
+  .actions.compactes .choix { min-height: 28px; padding: 0 10px; font-size: 13px; border-width: 1.5px; }
+  .constat details.plus summary { min-height: 24px; }
   /* Tri: l'etat decide par l'utilisateur, et le contexte pose par le pre-tri. */
   .etiq { display: inline-block; padding: 0 6px; border: 1px solid var(--trait); font-size: 12px; color: var(--gris); }
   .etat-tri { flex: 0 0 auto; padding: 1px 8px; font-size: 12px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; border: 2px dashed var(--encre); }
@@ -409,6 +422,7 @@
       <div class="panneau rapports">
         <div class="actions">
           <button type="button" class="choix" id="importer">importer un rapport</button>
+          <button type="button" class="choix" id="ouvrir-dossier" hidden>ouvrir le dossier</button>
           <span class="base">ou dépose un fichier .json sur la page</span>
           <input type="file" id="fichier-rapport" accept=".json,application/json" multiple hidden>
         </div>
@@ -710,12 +724,20 @@ function sessionLost() {
 // d'autre, et la page recharge ce qu'elle montre.
 var watch = { down: false };
 
+// pageID identifie la page servie au chargement. Un Quaero relance qui sert une
+// autre page, apres une mise a jour, fait recharger l'onglet: sinon il garderait
+// l'interface de la version precedente.
+var pageID = "";
+
 function watchQuaero() {
   qfetch(watch.down ? "/api/version" : "/api/presence").then(function (r) {
     if (r.status === 401) return;
     if (watch.down) {
       watch.down = false;
-      reconnected();
+      r.json().catch(function () { return {}; }).then(function (d) {
+        if (pageID && d.page && d.page !== pageID) location.reload();
+        else reconnected();
+      });
     }
     // Une reponse inattendue (ancienne version sans veille) ne doit pas
     // tourner en boucle serree.
@@ -892,6 +914,10 @@ function init() {
     if (e.key === "Enter") run({ fresh: true });
   });
   $("q").addEventListener("input", schedulePreview);
+  // Une question effacee rend la place a l'explication et aux exemples.
+  $("q").addEventListener("input", function () {
+    if (!this.value.trim()) $("vue-recherche").classList.remove("a-resultats");
+  });
   $("tab-recherche").onclick = function () { showTab("recherche"); };
   $("tab-audit").onclick = function () { showTab("audit"); };
   $("analyser").onclick = startScan;
@@ -902,6 +928,14 @@ function init() {
   loadScan();
   loadReports();
   $("importer").onclick = function () { $("fichier-rapport").click(); };
+  // Quaero ouvre le dossier lui-meme, dans l'explorateur de fichiers: la page
+  // ne peut pas, et un chemin a recopier fait perdre du temps.
+  $("ouvrir-dossier").onclick = function () {
+    api("POST", "/api/reports/open", "go=1").then(function (d) {
+      if (d.status !== 200) panelMsg("dossier non ouvert", d.error || String(d.status));
+      else panelMsg();
+    }, panelFail);
+  };
   // Le choix de la case est retenu par ce navigateur, d'une analyse a l'autre.
   try { $("garder").checked = localStorage.getItem(KEEP_KEY) === "1"; } catch (e) { /* sans stockage, decochee */ }
   $("garder").onchange = function () {
@@ -909,7 +943,7 @@ function init() {
   };
   $("fichier-rapport").onchange = function () { importFiles(Array.prototype.slice.call(this.files || [])); };
   qfetch("/api/version").then(function (r) { return r.json(); })
-    .then(function (d) { $("version").textContent = d.version || ""; })
+    .then(function (d) { $("version").textContent = d.version || ""; pageID = d.page || ""; })
     .catch(function () {});
   loadQuota();
   setInterval(drawQuota, 1000);
@@ -1206,11 +1240,15 @@ function refineBlock(data, repos) {
   } else {
     h += '<p class="aide">Ajoute un critère pour resserrer la liste.</p>';
   }
-  rows.forEach(function (row) {
-    h += '<div class="ligne"><span>' + esc(row[0]) + '</span><div class="boutons">' + row[1].join("") + "</div></div>";
-  });
+  // Les criteres restent replies: ils servent quand la liste deborde, pas a
+  // chaque lecture. Le panneau garde son etat d'une page a l'autre.
   if (rows.length) {
-    h += '<p class="base">Chaque choix relance la recherche. Les nombres comptent les ' + n + " dépôts chargés.</p>";
+    h += '<details id="affiner"' + (state.refineOpen ? " open" : "") + "><summary>affiner, "
+       + rows.map(function (row) { return esc(row[0]); }).join(", ") + "</summary><div>";
+    rows.forEach(function (row) {
+      h += '<div class="ligne"><span>' + esc(row[0]) + '</span><div class="boutons">' + row[1].join("") + "</div></div>";
+    });
+    h += '<p class="base">Chaque choix relance la recherche. Les nombres comptent les ' + n + " dépôts chargés.</p></div></details>";
   } else {
     h += '<p class="base">Précise ta phrase avec un mot plus rare, un langage (« en rust »), une popularité (« populaire ») ou une fraîcheur (« maintenu »).</p>';
   }
@@ -1237,6 +1275,7 @@ function render() {
     return state.lang === "toutes" || langOf(r) === state.lang;
   });
 
+  $("vue-recherche").classList.add("a-resultats");
   var total = data.total || 0;
   var h = '<div class="bandeau"><h2>' + fmt(total) + (total > 1 ? " dépôts" : " dépôt")
         + "<small>" + repos.length + (repos.length > 1 ? " chargés" : " chargé") + "</small></h2>";
@@ -1285,6 +1324,7 @@ function render() {
 
   h += pager(data, shown.length, from, slice.length, views);
   $("out").innerHTML = h;
+  if ($("affiner")) $("affiner").ontoggle = function () { state.refineOpen = this.open; };
 
   $("tri").onchange = function () { run({ sort: this.value }); };
   bind("#out [data-add]", function (b) {
@@ -1623,11 +1663,22 @@ function findingItem(f, job) {
         + '<span class="titre">' + esc(f.title) + "</span>"
         + (tri.etat !== "a_verifier" ? '<span class="etat-tri ' + esc(tri.etat) + '">' + esc(TRI_LABEL[tri.etat] || tri.etat) + "</span>" : "")
         + "</div>";
+  // Le lieu et les gestes partagent une ligne: chaque constat reste court.
+  var d = audit.drafts[f.id], gestes = "";
+  // Un signalement se prepare pour un constat confirme. Sans tri, comme avant.
+  if (tri.etat !== "faux_positif" && (!audit.triageOn || tri.etat === "confirme" || tri.etat === "signale" || (d && d.open))) {
+    gestes += '<button type="button" class="choix" data-draft="' + esc(f.id) + '">'
+            + (d && d.open ? "masquer le signalement" : "préparer le signalement") + "</button>";
+  }
+  gestes += triButtons(f.id, tri);
+  h += '<div class="l2">';
   if (where || by.length || tags.length) {
     h += '<p class="lieu">' + (where ? "<code>" + esc(where) + "</code>" : "")
        + (by.length ? "<span>" + esc(by.join(", ")) + "</span>" : "")
        + tags.map(function (t) { return '<span class="etiq">' + esc(CONTEXT_LABEL[t]) + "</span>"; }).join("") + "</p>";
   }
+  if (gestes) h += '<div class="actions compactes">' + gestes + "</div>";
+  h += "</div>";
 
   var body = "";
   if (f.description) body += "<p>" + esc(f.description) + "</p>";
@@ -1643,13 +1694,6 @@ function findingItem(f, job) {
   if (f.remediation) body += "<p>" + esc(f.remediation) + "</p>";
   if (body) h += '<details class="plus"><summary>détails</summary><div class="plus-corps">' + body + "</div></details>";
 
-  var d = audit.drafts[f.id];
-  h += '<div class="actions">';
-  if (tri.etat !== "faux_positif") {
-    h += '<button type="button" class="choix" data-draft="' + esc(f.id) + '">'
-       + (d && d.open ? "masquer le signalement" : "préparer le signalement") + "</button>";
-  }
-  h += triButtons(f.id, tri) + "</div>";
   if (audit.triageOn && tri.etat !== "a_verifier") {
     h += '<div class="actions"><input type="text" class="note-tri" maxlength="500" spellcheck="false" data-note="' + esc(f.id)
        + '" placeholder="note, facultative" aria-label="Note sur ce constat" value="' + esc(tri.note || "") + '"></div>';
@@ -1853,7 +1897,7 @@ function auditResult(job) {
         + (job.saved_at ? ", analyse du " + frDate(job.saved_at) : "")) + "</p>" : "";
   h += '<div class="bandeau"><h2>' + n + (n > 1 ? " constats" : " constat") + "<small>" + where
      + (ctx.commit ? ", commit " + esc(String(ctx.commit).slice(0, 7)) : "")
-     + ", " + duration(job.elapsed_s) + "</small></h2></div>";
+     + ", " + duration(job.elapsed_s) + "</small></h2>";
   // Rien n'est garde sans le demander: la case « Enregistrer le rapport » range
   // l'analyse des sa fin, sinon le bouton « enregistrer » le fait apres coup.
   var act = "";
@@ -1864,6 +1908,7 @@ function auditResult(job) {
         + '<button type="button" class="choix" data-save-report="1">enregistrer</button>';
   }
   if (act) h += '<div class="actions rapport-actions">' + act + "</div>";
+  h += "</div>";
   h += eng.html;
   if (!eng.ok) {
     return h + '<p class="erreur"><b>rien vérifié</b>' + (eng.failed
@@ -2122,6 +2167,7 @@ function loadReports() {
     audit.reportsOn = !!d.available;
     audit.reports = d.reports || [];
     audit.reportsDir = d.dir || "";
+    audit.canOpenDir = !!d.open;
     renderReports();
   }).catch(function () { /* sans effet, la liste reste telle quelle */ });
 }
@@ -2140,8 +2186,9 @@ function renderReports() {
        + '<button type="button" class="lien" data-del-report="' + esc(r.id) + '">supprimer</button></li>';
   });
   $("rapports-liste").innerHTML = h || '<li class="base">Aucun rapport. Coche « Enregistrer le rapport » avant d\'analyser pour le garder ici.</li>';
-  $("rapports-dossier").textContent = audit.reportsDir ? "Gardés sur ta machine, dans " + audit.reportsDir
-    + ". Ceux de ce dossier sont déjà dans la liste, l'import sert aux fichiers -scan-json venus d'ailleurs." : "";
+  $("ouvrir-dossier").hidden = !audit.canOpenDir;
+  $("rapports-dossier").textContent = audit.reportsDir ? "Gardés dans " + audit.reportsDir
+    + ". L'import sert aux fichiers venus d'ailleurs." : "";
   bind("#rapports-liste [data-open-report]", function (b) { openReport(b.getAttribute("data-open-report")); });
   bind("#rapports-liste [data-del-report]", function (b) { deleteReport(b.getAttribute("data-del-report")); });
 }

@@ -18,3 +18,14 @@ func TestBrowserCommand(t *testing.T) {
 		}
 	}
 }
+
+func TestFolderCommand(t *testing.T) {
+	const dir = `C:\Users\Terry PASSAVE\.quaero\rapports`
+	cases := map[string]string{"windows": "explorer", "darwin": "open", "linux": "xdg-open", "freebsd": "xdg-open"}
+	for goos, want := range cases {
+		name, args := folderCommand(goos, dir)
+		if name != want || len(args) != 1 || args[0] != dir {
+			t.Errorf("%s: %s %v, attendu %s [%s]", goos, name, args, want, dir)
+		}
+	}
+}

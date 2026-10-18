@@ -8,6 +8,7 @@ import (
 	"io"
 	"math"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -157,7 +158,31 @@ func (s *Server) handleReports(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "dossier des rapports illisible"})
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"available": true, "dir": s.Reports.Dir, "reports": list})
+	writeJSON(w, http.StatusOK, map[string]any{"available": true, "dir": s.Reports.Dir, "open": s.OpenDir != nil, "reports": list})
+}
+
+// handleReportsOpen ouvre le dossier des rapports dans l'explorateur de
+// fichiers. Le dossier est celui du magasin, jamais un chemin venu de la
+// requete: la page ne peut rien faire ouvrir d'autre.
+func (s *Server) handleReportsOpen(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		methodNotAllowed(w, "POST")
+		return
+	}
+	if s.Reports == nil || s.OpenDir == nil {
+		writeJSON(w, http.StatusNotImplemented, map[string]string{"error": "ouverture du dossier indisponible dans cette execution"})
+		return
+	}
+	// Avant le premier rapport, le dossier n'existe pas encore.
+	if err := os.MkdirAll(s.Reports.Dir, 0o700); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "dossier des rapports impossible a creer: " + err.Error()})
+		return
+	}
+	if err := s.OpenDir(s.Reports.Dir); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "explorateur de fichiers non lance: " + err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"opened": true})
 }
 
 // handleReportView rouvre un rapport enregistre.

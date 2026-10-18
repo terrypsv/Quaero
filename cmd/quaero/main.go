@@ -118,6 +118,7 @@ func main() {
 	// comme les dossiers locaux: elles peuvent citer du code prive.
 	if dir, err := reports.DefaultDir(); err == nil && !webui.ListensEverywhere(*addr) {
 		server.Reports = &reports.Store{Dir: dir}
+		server.OpenDir = openFolder
 	}
 	// Les decisions de tri suivent la meme regle: elles citent des fichiers et
 	// des notes sur des failles non corrigees.
