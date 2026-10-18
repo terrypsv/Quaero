@@ -49,12 +49,20 @@ type Scanner interface {
 }
 
 // buildScanner est un moteur qui apprend aussi du depot Go: la version de Go
-// qui compile, les modules du go.mod que rien n'importe. *Govulncheck le
-// satisfait. Il gere lui-meme son delai: ce qu'il rend sans erreur apres
-// l'echeance est un resultat partiel qu'il a signale, pas un resultat tronque.
+// qui compile, les modules de chaque go.mod que rien n'importe. *Govulncheck le
+// satisfait.
 type buildScanner interface {
 	Scanner
 	ScanBuild(ctx context.Context, dir string) ([]finding.Finding, *goFacts, error)
+}
+
+// deadlineScanner est un moteur qui gere lui-meme son delai: ce qu'il rend sans
+// erreur apres l'echeance est un resultat partiel qu'il a signale, pas un
+// resultat tronque. *Govulncheck et *Gosec le satisfont, eux qui enchainent
+// plusieurs modules.
+type deadlineScanner interface {
+	Scanner
+	handlesDeadline()
 }
 
 // DefaultTimeout borne la duree accordee a chaque moteur. Un moteur bloque ne
@@ -210,10 +218,11 @@ func runOne(ctx context.Context, s Scanner, dir string, timeout time.Duration) o
 	)
 	if b, ok := s.(buildScanner); ok {
 		fs, facts, err = b.ScanBuild(sctx, dir)
-		selfTime = err == nil
 	} else {
 		fs, err = s.Scan(sctx, dir)
 	}
+	_, self := s.(deadlineScanner)
+	selfTime = self && err == nil
 	out := outcome{available: true, findings: fs, facts: facts, err: err, elapsed: time.Since(start)}
 
 	switch ctxErr := sctx.Err(); {
