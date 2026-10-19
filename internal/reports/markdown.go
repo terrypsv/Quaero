@@ -22,12 +22,13 @@ import (
 // texte tel quel, ou mis en forme par n'importe quel lecteur Markdown. Il range
 // les constats comme la page: a verifier d'abord, puis les dependances, puis
 // les sections repliees. decisions porte le tri deja fait, par constat, et
-// peut etre nil.
+// peut etre nil. diff, s'il nomme une analyse precedente, dit ce qui a ete
+// corrige depuis et marque ce qui est nouveau.
 //
 // Le texte vient du rapport, qui peut avoir ete importe: rien n'y est
 // interprete, les champs sont recopies sur une ligne et les blocs de code sont
 // clos par une cloture plus longue que ce qu'ils contiennent.
-func Markdown(rep *finding.Report, decisions map[string]triage.Decision, now time.Time) string {
+func Markdown(rep *finding.Report, decisions map[string]triage.Decision, diff *Diff, now time.Time) string {
 	var b strings.Builder
 	e := entryOf("", rep)
 	fmt.Fprintf(&b, "# Rapport Quaero, %s\n\n", text(shortTarget(e.Target)))
@@ -80,6 +81,13 @@ func Markdown(rep *finding.Report, decisions map[string]triage.Decision, now tim
 	if eng := enginesLine(rep); eng != "" {
 		b.WriteString(eng + "\n\n")
 	}
+	fresh := map[string]bool{}
+	if diff != nil && diff.Previous != "" {
+		for _, id := range diff.New {
+			fresh[id] = true
+		}
+		writeDiff(&b, diff)
+	}
 
 	section := func(title, hint string, fs []finding.Finding, dep bool) {
 		if len(fs) == 0 {
@@ -92,9 +100,9 @@ func Markdown(rep *finding.Report, decisions map[string]triage.Decision, now tim
 			b.WriteString(hint + "\n\n")
 		}
 		if dep {
-			writeDeps(&b, fs, rep)
+			writeDeps(&b, fs, rep, fresh)
 		} else {
-			writeGroups(&b, fs, decisions)
+			writeGroups(&b, fs, decisions, fresh)
 		}
 	}
 	section("À vérifier", "", main, false)
@@ -156,7 +164,7 @@ var contextWords = map[string]string{
 // writeGroups ecrit les constats de code regroupes par regle: la description
 // une fois, puis chaque endroit avec son extrait et son tri. Neuf appels
 // signales par la meme regle se lisent en un seul bloc.
-func writeGroups(b *strings.Builder, fs []finding.Finding, decisions map[string]triage.Decision) {
+func writeGroups(b *strings.Builder, fs []finding.Finding, decisions map[string]triage.Decision, fresh map[string]bool) {
 	var order []string
 	groups := map[string][]finding.Finding{}
 	for _, f := range fs {
@@ -200,7 +208,7 @@ func writeGroups(b *strings.Builder, fs []finding.Finding, decisions map[string]
 			b.WriteString(strings.ToUpper(line[:1]) + line[1:] + ".\n\n")
 		}
 		for _, f := range g {
-			writePlace(b, f, decisions[f.ID])
+			writePlace(b, f, decisions[f.ID], fresh[f.ID])
 		}
 		b.WriteString("\n")
 		// Comment corriger, puis quand c'est un faux positif et comment le
@@ -279,7 +287,7 @@ func lowerFirst(s string) string {
 
 // writePlace ecrit un endroit signale: le fichier et la ligne, les moteurs,
 // les etiquettes du pre-tri, le tri decide et l'extrait de code.
-func writePlace(b *strings.Builder, f finding.Finding, d triage.Decision) {
+func writePlace(b *strings.Builder, f finding.Finding, d triage.Decision, fresh bool) {
 	var where []string
 	if f.Target != nil && f.Target.Identifier != "" {
 		where = append(where, code(f.Target.Identifier))
@@ -294,6 +302,9 @@ func writePlace(b *strings.Builder, f finding.Finding, d triage.Decision) {
 	}
 	if len(where) == 0 {
 		where = append(where, text(f.ID))
+	}
+	if fresh {
+		where = append(where, "nouveau")
 	}
 	item := "- " + strings.Join(where, ", ")
 	if w := stateWords[d.State]; w != "" {
@@ -320,7 +331,7 @@ func indent(b *strings.Builder, block string) {
 }
 
 // writeDeps regroupe les vulnerabilites publiees par dependance, comme la page.
-func writeDeps(b *strings.Builder, fs []finding.Finding, rep *finding.Report) {
+func writeDeps(b *strings.Builder, fs []finding.Finding, rep *finding.Report, fresh map[string]bool) {
 	type group struct {
 		name     string
 		versions []string
@@ -364,6 +375,9 @@ func writeDeps(b *strings.Builder, fs []finding.Finding, rep *finding.Report) {
 			if len(ids) > 0 {
 				item += " (" + text(strings.Join(ids[:min(3, len(ids))], ", ")) + ")"
 			}
+			if fresh[f.ID] {
+				item += ", nouveau"
+			}
 			b.WriteString(item + "\n")
 		}
 		b.WriteString("\n")
@@ -382,6 +396,54 @@ func writeDeps(b *strings.Builder, fs []finding.Finding, rep *finding.Report) {
 			b.WriteString(s + "\n\n")
 		}
 	}
+}
+
+// writeDiff dit ce qui a change depuis l'analyse precedente, et liste ce qui
+// a ete corrige depuis.
+func writeDiff(b *strings.Builder, d *Diff) {
+	b.WriteString("## Depuis l'analyse précédente\n\n")
+	b.WriteString(DiffSummary(d) + "\n\n")
+	for _, g := range d.Fixed {
+		sev := severityWords[g.Severity]
+		if sev == "" {
+			sev = string(g.Severity)
+		}
+		item := "- [" + sev + "] " + text(g.Title)
+		if g.Where != "" {
+			item += ", " + code(g.Where)
+		}
+		if g.Dependency && len(g.Refs) > 0 {
+			item += " (" + text(strings.Join(g.Refs[:min(3, len(g.Refs))], ", ")) + ")"
+		}
+		b.WriteString(item + "\n")
+	}
+	if len(d.Fixed) > 0 {
+		b.WriteString("\n")
+	}
+}
+
+// DiffSummary dit en une phrase ce qui a change depuis l'analyse precedente.
+func DiffSummary(d *Diff) string {
+	s := "Analyse du " + d.Since.Local().Format("02/01/2006 à 15h04")
+	if d.Commit != "" {
+		s += ", commit " + code(string([]rune(d.Commit)[:min(7, len([]rune(d.Commit)))]))
+	}
+	// Les constats inchanges ne se comptent pas: la page compte une
+	// dependance pour toutes ses vulnerabilites, le suivi chaque
+	// vulnerabilite, deux nombres qui ne se comparent pas.
+	if len(d.Fixed) == 0 && len(d.New) == 0 {
+		s += ". Rien de corrigé ni de nouveau."
+	} else {
+		s += ". " + frPlural(len(d.Fixed), "corrigé", "corrigés") + ", " + frPlural(len(d.New), "nouveau", "nouveaux") + "."
+	}
+	if d.Older {
+		s += " Rapport d'une version antérieure de Quaero, qui rangeait autrement les constats, quelques-uns peuvent être comptés à tort."
+	}
+	if d.Uncompared > 0 {
+		s += " " + frPlural(d.Uncompared, "constat non comparé", "constats non comparés") + ", " + text(strings.Join(d.Engines, ", ")) +
+			map[bool]string{true: " n'a", false: " n'ont"}[len(d.Engines) == 1] + " pas tourné entièrement dans les deux analyses."
+	}
+	return s
 }
 
 // writeDepFix dit comment corriger une dependance, comme la page: la version
@@ -685,6 +747,14 @@ func seconds(s float64) string {
 		return strings.TrimSuffix(out, ",0") + " s"
 	}
 	return fmt.Sprintf("%d min %02d s", int(s)/60, int(s)%60)
+}
+
+// frPlural accorde a la francaise: le singulier jusqu'a un, zero compris.
+func frPlural(n int, one, many string) string {
+	if n <= 1 {
+		return fmt.Sprintf("%d %s", n, one)
+	}
+	return fmt.Sprintf("%d %s", n, many)
 }
 
 func plural(n int, one, many string) string {

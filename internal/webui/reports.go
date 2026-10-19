@@ -95,6 +95,18 @@ func (s *Server) handleScanSave(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// diffFor rend la comparaison du rapport designe par la page: celle de
+// l'analyse courante, ou celle d'un rapport enregistre avec le precedent.
+func (s *Server) diffFor(id string, rep *finding.Report) *reports.Diff {
+	if _, ok := strings.CutPrefix(id, savedPrefix); ok {
+		if s.Reports == nil {
+			return nil
+		}
+		return s.Reports.DiffWith(rep)
+	}
+	return s.scans.diff(id)
+}
+
 // reportFor rend le rapport designe par la page: l'analyse courante, ou un
 // rapport enregistre (prefixe r:).
 func (s *Server) reportFor(id string) (*finding.Report, bool) {
@@ -201,7 +213,9 @@ func (s *Server) handleReportView(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": reports.ErrNotFound.Error()})
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"view": s.withTriage(savedView(id, rep))})
+	v := savedView(id, rep)
+	v.Diff = s.Reports.DiffWith(rep)
+	writeJSON(w, http.StatusOK, map[string]any{"view": s.withTriage(v)})
 }
 
 // handleReportImport enregistre un rapport envoye par la page, lu depuis un

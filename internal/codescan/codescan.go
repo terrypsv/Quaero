@@ -198,6 +198,9 @@ func RunWith(ctx context.Context, dir, version string, opt Options, scanners ...
 	// La duree de chaque moteur dit ou passe le temps d'un scan.
 	rep.Run.Context["durees_s"] = durations
 	rep.Run.Context["delai_moteur_s"] = timeout.Seconds()
+	// La forme des constats: une comparaison avec un rapport d'une forme
+	// plus ancienne le dit (reports.Compare).
+	rep.Run.Context["format_constats"] = FindingsFormat
 	// La version de Go qui a compile le depot pour govulncheck. osv-scanner, lui,
 	// lit celle du go.mod, souvent plus ancienne.
 	if facts != nil && facts.goVersion != "" {
@@ -262,6 +265,11 @@ func absDir(dir string) (string, error) {
 	}
 	return abs, nil
 }
+
+// FindingsFormat date la forme des constats. 2: une dependance par paquet
+// (une CVE qui touche x/net et stdlib fait deux constats), chaque module Go du
+// depot analyse. Un rapport sans ce numero vient d'une version d'avant.
+const FindingsFormat = 2
 
 // unavailable est le constat laisse par un analyseur non installe.
 func unavailable(name string) finding.Finding {

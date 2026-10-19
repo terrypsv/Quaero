@@ -319,6 +319,14 @@
   .outils .filtres { margin-top: 0; }
   .outils .filtres > span:first-child { min-width: 70px; }
   .outils .moteurs { margin-top: 0; }
+  /* Suivi: ce qui a change depuis l'analyse enregistree precedente. */
+  .suivi p { margin: 0; color: var(--encre); }
+  .suivi p.base { color: var(--gris); }
+  .etiq.nouveau { border-color: var(--encre); color: var(--encre); font-weight: 700; }
+  /* Un constat corrige se lit sans alarme: plus de couleur de gravite. */
+  .constat.corrige[data-grav] { border-left-color: var(--trait); }
+  .constat.corrige .grav { background: transparent; border-color: var(--trait); color: var(--gris); }
+  .constat.corrige .titre { font-weight: 600; font-size: 15px; color: var(--gris); }
   .constat .l2 { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 16px; }
   .actions.compactes { gap: 6px; }
   .actions.compactes .choix { min-height: 28px; padding: 0 10px; font-size: 13px; border-width: 1.5px; }
@@ -1709,9 +1717,11 @@ function findingItem(f, job) {
   }
   gestes += triButtons(f.id, tri);
   h += '<div class="l2">';
-  if (where || by.length || tags.length) {
+  var fresh = isNew(job, f.id);
+  if (where || by.length || tags.length || fresh) {
     h += '<p class="lieu">' + (where ? "<code>" + esc(where) + "</code>" : "")
        + (by.length ? "<span>" + esc(by.join(", ")) + "</span>" : "")
+       + (fresh ? '<span class="etiq nouveau">nouveau</span>' : "")
        + tags.map(function (t) { return '<span class="etiq">' + esc(CONTEXT_LABEL[t]) + "</span>"; }).join("") + "</p>";
   }
   if (gestes) h += '<div class="actions compactes">' + gestes + "</div>";
@@ -1923,9 +1933,9 @@ function cmpVersion(a, b) {
   return 0;
 }
 
-function depItem(g, goVersion) {
+function depItem(g, goVersion, job) {
   var n = g.list.length, engines = [], reach = false, notCalled = false, fix = "";
-  var targets = [], commands = [], noFix = 0, anyFix = "";
+  var targets = [], commands = [], noFix = 0, anyFix = "", fresh = 0;
   g.list.forEach(function (f) {
     var ctx = evidenceOf(f, "contexte");
     evidenceOf(f, "engine").forEach(function (e) { if (engines.indexOf(e) < 0) engines.push(e); });
@@ -1934,6 +1944,7 @@ function depItem(g, goVersion) {
     evidenceOf(f, "version_cible").forEach(function (v) { if (targets.indexOf(v) < 0) targets.push(v); });
     evidenceOf(f, "commande").forEach(function (c) { if (commands.indexOf(c) < 0) commands.push(c); });
     if (evidenceOf(f, "sans_correctif").length && !evidenceOf(f, "corrige_en").length) noFix++;
+    if (job && isNew(job, f.id)) fresh++;
     if (!anyFix && f.remediation) anyFix = f.remediation;
     if (evidenceOf(f, "engine").indexOf("govulncheck") >= 0) {
       // Rapport d'avant le pre-tri: la gravite haute disait l'appel.
@@ -1945,13 +1956,15 @@ function depItem(g, goVersion) {
         + '<span class="grav ' + esc(g.sev) + '">' + esc(SEVERITY_LABEL[g.sev] || g.sev) + "</span>"
         + '<span class="titre">' + esc(g.name) + (g.versions.length ? " <code>" + esc(g.versions.join(", ")) + "</code>" : "") + "</span></div>"
         + '<p class="lieu"><span>' + n + (n > 1 ? " vulnérabilités publiées" : " vulnérabilité publiée") + "</span>"
-        + (engines.length ? "<span>" + esc(engines.join(", ")) + "</span>" : "") + "</p>";
+        + (engines.length ? "<span>" + esc(engines.join(", ")) + "</span>" : "")
+        + (fresh ? '<span class="etiq nouveau">' + (fresh === n ? (n > 1 ? "nouvelles" : "nouvelle") : fresh + (fresh > 1 ? " nouvelles" : " nouvelle")) + "</span>" : "") + "</p>";
 
   var body = '<ul class="vulns">';
   g.list.forEach(function (f) {
     var ids = (f.references || []).filter(function (r) { return r.framework !== "CWE"; }).map(function (r) { return r.id; });
     body += '<li><span class="grav ' + esc(f.severity || "info") + '">' + esc(SEVERITY_LABEL[f.severity] || f.severity || "info") + "</span>"
-          + "<span>" + esc(f.title) + (ids.length ? " <code>" + esc(ids.slice(0, 3).join(", ")) + "</code>" : "") + "</span></li>";
+          + "<span>" + esc(f.title) + (ids.length ? " <code>" + esc(ids.slice(0, 3).join(", ")) + "</code>" : "")
+          + (job && isNew(job, f.id) ? ' <span class="etiq nouveau">nouvelle</span>' : "") + "</span></li>";
   });
   body += "</ul>";
   targets.sort(cmpVersion);
@@ -1975,6 +1988,59 @@ function depItem(g, goVersion) {
        + "Ce qui compte, c'est la version qui compile les binaires publiés.</p>";
   }
   return h + "</li>";
+}
+
+// isNew dit si le constat id est apparu depuis l'analyse precedente.
+function isNew(job, id) {
+  var d = job.diff;
+  if (!d || !d.rapport) return false;
+  if (!d._set) {
+    d._set = Object.create(null);
+    (d.nouveaux || []).forEach(function (x) { d._set[x] = true; });
+  }
+  return !!d._set[id];
+}
+
+function plural(n, one, many) { return n + " " + (n > 1 ? many : one); }
+
+// diffRow dit, sur une ligne, ce qui a change depuis l'analyse enregistree
+// precedente du meme depot.
+function diffRow(job) {
+  var d = job.diff;
+  if (!d) return "";
+  if (!d.rapport) {
+    return audit.reportsOn ? '<div class="filtres suivi"><span>depuis</span><p class="base">Aucune analyse de ce dépôt enregistrée avant celle-ci, rien à comparer.</p></div>' : "";
+  }
+  // Les inchanges ne se comptent pas: la page compte une dependance pour
+  // toutes ses vulnerabilites, le suivi chaque vulnerabilite.
+  var fixed = (d.corriges || []).length, fresh = (d.nouveaux || []).length;
+  var t = "l'analyse du " + frDate(d.depuis) + (d.commit ? ", commit " + String(d.commit).slice(0, 7) : "") + ", "
+        + (fixed || fresh ? plural(fixed, "corrigé", "corrigés") + ", " + plural(fresh, "nouveau", "nouveaux") + "." : "rien de corrigé ni de nouveau.");
+  if (d.version_anterieure) t += " Rapport d'une version antérieure de Quaero, qui rangeait autrement les constats, quelques-uns peuvent être comptés à tort.";
+  if (d.non_compares) {
+    var eng = (d.moteurs_non_compares || []).join(", ");
+    t += " " + plural(d.non_compares, "constat non comparé", "constats non comparés") + ", " + eng
+       + ((d.moteurs_non_compares || []).length > 1 ? " n'ont" : " n'a") + " pas tourné entièrement dans les deux analyses.";
+  }
+  return '<div class="filtres suivi"><span>depuis</span><p>' + esc(t) + "</p></div>";
+}
+
+// fixedSection range a part ce que l'analyse precedente relevait et que
+// celle-ci ne releve plus.
+function fixedSection(job) {
+  var d = job.diff, gone = (d && d.rapport && d.corriges) || [];
+  if (!gone.length) return "";
+  var items = gone.map(function (g) {
+    var sev = g.gravite || "info";
+    return '<li class="depot constat corrige" data-grav="' + esc(sev) + '"><div class="l1">'
+         + '<span class="grav ' + esc(sev) + '">' + esc(SEVERITY_LABEL[sev] || sev) + "</span>"
+         + '<span class="titre">' + esc(g.titre) + "</span></div>"
+         + '<p class="lieu">' + (g.lieu ? "<code>" + esc(g.lieu) + "</code>" : "")
+         + (g.dependance && g.references ? "<span>" + esc(g.references.slice(0, 3).join(", ")) + "</span>" : "") + "</p></li>";
+  }).join("");
+  return '<details class="repli" data-repli="corriges"' + (audit.repli.corriges ? " open" : "") + "><summary>corrigés depuis l'analyse précédente, "
+       + gone.length + '<span class="base">relevés le ' + esc(frDate(d.depuis)) + ", plus maintenant</span></summary>"
+       + '<ol class="liste">' + items + "</ol></details>";
 }
 
 function auditResult(job) {
@@ -2009,14 +2075,14 @@ function auditResult(job) {
   // Moteurs et filtres forment un bloc a part, une ligne chacun, separe du
   // titre et de la liste.
   h += '<div class="outils">' + (eng.html ? '<div class="filtres"><span>moteurs</span>' + eng.html + "</div>" : "")
-     + (eng.ok && n ? auditFilters(items) : "") + "</div>";
+     + (eng.ok ? diffRow(job) : "") + (eng.ok && n ? auditFilters(items) : "") + "</div>";
   if (!eng.ok) {
     return h + '<p class="erreur"><b>rien vérifié</b>' + (eng.failed
       ? "Aucun moteur n'a fini son travail. Survole un moteur en échec pour la raison."
       : "Aucun moteur installé. Installe semgrep et osv-scanner, puis relance.") + "</p>";
   }
   if (!n) {
-    return h + '<p class="rien">' + (eng.partial ? "Rien relevé, mais un moteur n'a pas tout vérifié." : "Rien relevé par les moteurs.") + "</p>";
+    return h + '<p class="rien">' + (eng.partial ? "Rien relevé, mais un moteur n'a pas tout vérifié." : "Rien relevé par les moteurs.") + "</p>" + fixedSection(job);
   }
   var f = audit.filter;
   var shown = items.filter(function (it) {
@@ -2034,7 +2100,7 @@ function auditResult(job) {
     else main.push(it);
   });
   var list = function (its) {
-    return '<ol class="liste">' + its.map(function (it) { return it.kind === "code" ? findingItem(it.f, job) : depItem(it, ctx.go_compile); }).join("") + "</ol>";
+    return '<ol class="liste">' + its.map(function (it) { return it.kind === "code" ? findingItem(it.f, job) : depItem(it, ctx.go_compile, job); }).join("") + "</ol>";
   };
   // section garde son etat d'ouverture et dit, replie, combien de constats
   // graves elle contient: rien de grave ne passe inapercu.
@@ -2047,6 +2113,7 @@ function auditResult(job) {
   if (main.length) h += list(main);
   if (!shown.length) h += '<p class="rien">Rien avec ces filtres.</p>';
   else if (!main.length) h += '<p class="rien">Rien en dehors des sections repliées.</p>';
+  h += fixedSection(job);
   h += section("essais", essais, "tests et exemples", "hors du logiciel livré, à regarder en dernier");
   h += section("tiers", tiers, "code tiers ou généré", "livré, mais corrigé en amont ou par une nouvelle génération");
   h += section("inutilisees", unused, "dépendances inutilisées", "requises par go.mod, importées par aucun paquet");

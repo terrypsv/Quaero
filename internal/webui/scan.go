@@ -153,6 +153,7 @@ type scanJob struct {
 	err       string
 	errCode   string
 	report    *finding.Report
+	diff      *reports.Diff
 	savedID   string
 	saveErr   string
 	saving    bool
@@ -203,6 +204,9 @@ type scanView struct {
 	// Triage porte les decisions deja prises sur les constats, par
 	// identifiant (triage.go). Un constat absent est a verifier.
 	Triage map[string]triage.Decision `json:"tri,omitempty"`
+	// Diff dit ce qui a change depuis l'analyse enregistree precedente du
+	// meme depot. Il est nil sans dossier des rapports.
+	Diff *reports.Diff `json:"diff,omitempty"`
 }
 
 // view lit j sous le verrou de scanJobs.
@@ -231,6 +235,7 @@ func (j *scanJob) view(now time.Time) scanView {
 	if j.report != nil {
 		v.Result = j.report
 		v.Reportable = reportableIDs(j.report)
+		v.Diff = j.diff
 	}
 	v.Saved, v.SaveError = j.savedID, j.saveErr
 	return v
@@ -251,8 +256,9 @@ const savedPrefix = "r:"
 // start lance une analyse si aucune ne tourne. Elle rend l'analyse lancee, ou
 // celle qui tourne deja et false, ou errClosing si Quaero s'arrete.
 // keep, s'il n'est pas nil, recoit le rapport des la fin de l'analyse: c'est
-// la case « Enregistrer le rapport » cochee avant de lancer.
-func (s *scanJobs) start(scan ScanFunc, t ScanTarget, keep *reports.Store) (*scanJob, bool, error) {
+// la case « Enregistrer le rapport » cochee avant de lancer. past, s'il n'est
+// pas nil, donne l'analyse precedente du meme depot, a comparer.
+func (s *scanJobs) start(scan ScanFunc, t ScanTarget, keep, past *reports.Store) (*scanJob, bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.closed {
@@ -285,6 +291,12 @@ func (s *scanJobs) start(scan ScanFunc, t ScanTarget, keep *reports.Store) (*sca
 		// une fois, une annulation pendant l'ecriture ne laisse pas une analyse
 		// annulee avec un rapport garde.
 		ctxErr := ctx.Err()
+		// La comparaison se fait avant l'enregistrement: l'analyse ne se
+		// compare pas a elle-meme.
+		var diff *reports.Diff
+		if past != nil && err == nil && rep != nil && ctxErr == nil {
+			diff = past.DiffWith(rep)
+		}
 		var savedID, saveErr string
 		if keep != nil && err == nil && rep != nil && ctxErr == nil {
 			if e, serr := keep.Save(rep); serr != nil {
@@ -293,7 +305,7 @@ func (s *scanJobs) start(scan ScanFunc, t ScanTarget, keep *reports.Store) (*sca
 				savedID = e.ID
 			}
 		}
-		s.finish(job, rep, err, ctxErr, savedID, saveErr)
+		s.finish(job, rep, err, ctxErr, savedID, saveErr, diff)
 	}()
 	return job, true, nil
 }
@@ -308,11 +320,12 @@ func (s *scanJobs) stage(job *scanJob, stage string) {
 	}
 }
 
-func (s *scanJobs) finish(job *scanJob, rep *finding.Report, err, ctxErr error, savedID, saveErr string) {
+func (s *scanJobs) finish(job *scanJob, rep *finding.Report, err, ctxErr error, savedID, saveErr string, diff *reports.Diff) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	job.ended = time.Now()
 	job.savedID, job.saveErr = savedID, saveErr
+	job.diff = diff
 	switch {
 	case ctxErr != nil:
 		// Une analyse annulee ne rend rien: un resultat partiel passerait pour
@@ -363,6 +376,16 @@ func (s *scanJobs) viewOf(job *scanJob) scanView {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return job.view(time.Now())
+}
+
+// diff rend la comparaison de l'analyse id, si elle est finie.
+func (s *scanJobs) diff(id string) *reports.Diff {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.cur == nil || s.cur.id != id {
+		return nil
+	}
+	return s.cur.diff
 }
 
 // report rend le rapport de l'analyse id, si elle est finie.
@@ -453,7 +476,7 @@ func (s *Server) handleScan(w http.ResponseWriter, r *http.Request) {
 		if r.PostForm.Get("enregistrer") == "1" {
 			keep = s.Reports
 		}
-		job, started, err := s.scans.start(s.Scan, target, keep)
+		job, started, err := s.scans.start(s.Scan, target, keep, s.Reports)
 		if err != nil {
 			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": err.Error()})
 			return
@@ -539,7 +562,7 @@ func (s *Server) handleScanExport(w http.ResponseWriter, r *http.Request) {
 		decisions = s.Triage.For(rep)
 	}
 	writeJSON(w, http.StatusOK, map[string]string{
-		"text": reports.Markdown(rep, decisions, time.Now()),
+		"text": reports.Markdown(rep, decisions, s.diffFor(r.URL.Query().Get("id"), rep), time.Now()),
 		"file": reports.ExportName(rep),
 	})
 }
