@@ -732,6 +732,41 @@ Ce qui est corrigé n'apparaît plus à l'analyse suivante. Un rapport
 enregistré garde ce qu'il a vu le jour de l'analyse. Les décisions de tri
 restent dans `~/.quaero/tri.json` et reviennent si la même ligne réapparaît.
 
+### Suivre d'une analyse à l'autre
+
+Une analyse se compare à la précédente du même dépôt, parmi les rapports
+enregistrés. La ligne « depuis », sous les moteurs, dit combien de constats
+ont été corrigés et combien sont nouveaux. Un constat nouveau porte
+l'étiquette « nouveau », une vulnérabilité nouvelle « nouvelle ». Ce qui a été
+corrigé est rangé dans « corrigés depuis l'analyse précédente », replié. Un
+rapport rouvert se compare à celui d'avant lui. L'export `.md` reprend la
+comparaison.
+
+- Un constat se reconnaît comme pour le tri, à sa règle, son fichier et le
+  texte de sa ligne, pas à son numéro. Une ligne déplacée n'est ni corrigée
+  ni nouvelle. Une ligne réécrite, si.
+- Une dépendance se reconnaît à son paquet et à sa vulnérabilité. Une
+  version qui change sans corriger ne compte pas.
+- Un moteur absent, en échec ou sans rien à lire dans l'une des deux
+  analyses ne corrige rien et n'ajoute rien. Ses constats sont comptés à
+  part, et la ligne nomme le moteur. Un moteur en partie non plus, sauf pour
+  un constat qu'un autre moteur a revu entièrement. Une dépendance Go, que
+  lit aussi osv-scanner, se dit corrigée même si govulncheck ne se compile
+  pas pour tous les systèmes.
+- Un constat relevé par deux moteurs n'est dit corrigé que si les deux ont
+  tourné.
+- Une ligne identique ajoutée à côté d'une autre déjà relevée est nouvelle.
+  Une règle qui se met à relever une ligne déjà signalée par une autre
+  aussi.
+- Un dossier local se compare aux rapports faits sur la même machine. Quaero
+  y garde un identifiant tiré au hasard, dans `~/.quaero/poste`, que le nom
+  de la machine peut changer sans le perdre.
+- Un rapport d'une version antérieure de Quaero, qui rangeait autrement les
+  constats, le dit sur la ligne. Quelques constats peuvent y être comptés à
+  tort.
+- Il faut un rapport enregistré pour comparer. La case « Enregistrer le
+  rapport » ou le bouton « enregistrer » le gardent.
+
 ## Structure
 
 ```

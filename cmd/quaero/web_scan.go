@@ -36,6 +36,7 @@ func webScan(token string) webui.ScanFunc {
 			return nil, err
 		}
 		rep.Run.Context["cible"] = label
+		stampMachine(rep)
 		if commit := headCommit(ctx, dir); commit != "" {
 			rep.Run.Context["commit"] = commit
 		}

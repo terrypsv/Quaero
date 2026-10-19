@@ -399,6 +399,22 @@ func publishedKey(f finding.Finding) (string, string) {
 	return name, id
 }
 
+// Place rend l'endroit d'un constat de code, son fichier et le texte de sa
+// ligne, sans la regle ni le numero de ligne: deux analyses qui relevent la
+// meme ligne par des regles differentes parlent du meme endroit. Il rend ""
+// pour une dependance, ou sans texte de ligne.
+func Place(f finding.Finding) string {
+	if _, id := publishedKey(f); id != "" {
+		return ""
+	}
+	p, line := location(f)
+	code := codeText(f, line)
+	if code == "" {
+		return ""
+	}
+	return p + "\x00" + code
+}
+
 // location rend le fichier et la ligne d'un constat de code.
 func location(f finding.Finding) (string, int) {
 	if f.Target == nil {

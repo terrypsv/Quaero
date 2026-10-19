@@ -53,7 +53,7 @@ func TestExportMarkdown(t *testing.T) {
 	md := Markdown(rep, map[string]triage.Decision{
 		"A2": {State: triage.Confirmed, Note: "appel\nreel"},
 		"F":  {State: triage.FalsePositive},
-	}, time.Date(2026, 10, 18, 18, 30, 0, 0, time.Local))
+	}, nil, time.Date(2026, 10, 18, 18, 30, 0, 0, time.Local))
 
 	order := []string{"# Rapport Quaero, acme/outil", "## Résumé", "## À vérifier (3)", "## Dépendances (2)",
 		"## Tests et exemples (1)", "## Dépendances inutilisées (1)", "## Faux positifs (1)", "Exporté par Quaero 1.2.3 le 18/10/2026 à 18h30."}
@@ -129,7 +129,7 @@ func TestExportCommentCorriger(t *testing.T) {
 	rep.Add(dep("GHSA-c2qf", "semver@5.7.1", "corrige_en", "5.7.2", "version_cible", "5.7.2", "commande", "npm update semver"))
 	rep.Add(dep("GHSA-c2qf-2", "semver@6.3.0", "corrige_en", "6.3.1", "version_cible", "6.3.1", "commande", "npm update semver"))
 	rep.Finish()
-	md := Markdown(rep, nil, time.Now())
+	md := Markdown(rep, nil, nil, time.Now())
 	for _, want := range []string{
 		"**Corriger.** Lancer un binaire fixe.",
 		"**Faux positif** si le binaire vient du programme. Le dire dans le code avec `// #nosec G204 -- raison` en fin de ligne, et `// nosemgrep: r.x` sur la ligne d'avant.\n\n",

@@ -272,3 +272,34 @@ func TestOuvrirLeDossier(t *testing.T) {
 		t.Errorf("sans ouvreur: %d", rec.Code)
 	}
 }
+
+// Une analyse se compare a la precedente enregistree du meme depot, et un
+// rapport rouvert a celle d'avant lui.
+func TestComparaisonAvecLaPrecedente(t *testing.T) {
+	s, h, f := reportServer(t)
+	close(f.release)
+	post(h, "/api/scan", url.Values{"cible": {"mushorg/cowrie"}, "enregistrer": {"1"}}, ourOrigin)
+	wait(t, s)
+	first := decode(t, get(h, "/api/scan")).Job
+	if first.Saved == "" || first.Diff == nil || first.Diff.Previous != "" {
+		t.Fatalf("premiere analyse: %+v", first)
+	}
+	post(h, "/api/scan", url.Values{"cible": {"mushorg/cowrie"}}, ourOrigin)
+	wait(t, s)
+	second := decode(t, get(h, "/api/scan")).Job
+	if d := second.Diff; d == nil || d.Previous != first.Saved || d.Unchanged != 1 || len(d.New) != 0 || len(d.Fixed) != 0 {
+		t.Fatalf("seconde analyse: %+v", second.Diff)
+	}
+	var out struct{ Text string }
+	if err := json.Unmarshal(get(h, "/api/scan/export?id="+second.ID).Body.Bytes(), &out); err != nil ||
+		!strings.Contains(out.Text, "## Depuis l'analyse précédente") || !strings.Contains(out.Text, "Rien de corrigé ni de nouveau.") {
+		t.Errorf("export: %v\n%s", err, out.Text)
+	}
+	var view struct{ View scanView }
+	if err := json.Unmarshal(get(h, "/api/reports/view?id="+first.Saved).Body.Bytes(), &view); err != nil {
+		t.Fatal(err)
+	}
+	if d := view.View.Diff; d == nil || d.Previous != "" {
+		t.Errorf("rapport rouvert, rien avant lui: %+v", d)
+	}
+}
